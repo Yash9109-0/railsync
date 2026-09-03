@@ -1,5 +1,6 @@
 import type { Config } from "tailwindcss";
 import animate from "tailwindcss-animate";
+import plugin from "tailwindcss/plugin";
 
 export default {
   darkMode: ["class"],
@@ -93,5 +94,36 @@ export default {
       },
     },
   },
-  plugins: [animate],
+  plugins: [
+    animate,
+    plugin(({ addVariant }) => {
+      addVariant("data-open", [
+        "&:where([data-state=\"open\"])",
+        "&:where([data-open]:not([data-open=\"false\"]))",
+      ]);
+      addVariant("data-closed", [
+        "&:where([data-state=\"closed\"])",
+        "&:where([data-closed]:not([data-closed=\"false\"]))",
+      ]);
+      addVariant("data-checked", [
+        "&:where([data-state=\"checked\"])",
+        "&:where([data-checked=\"true\"])",
+      ]);
+      addVariant("data-unchecked", [
+        "&:where([data-state=\"unchecked\"])",
+        "&:where([data-unchecked]:not([data-unchecked=\"false\"]))",
+      ]);
+      addVariant("data-selected", "&:where([data-selected=\"true\"])");
+      addVariant("data-disabled", [
+        "&:where([data-disabled=\"true\"])",
+        "&:where([data-disabled]:not([data-disabled=\"false\"]))",
+      ]);
+      addVariant("data-active", [
+        "&:where([data-state=\"active\"])",
+        "&:where([data-active=\"true\"])",
+      ]);
+      addVariant("data-horizontal", "&:where([data-orientation=\"horizontal\"])");
+      addVariant("data-vertical", "&:where([data-orientation=\"vertical\"])");
+    }),
+  ],
 } satisfies Config;

@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Toaster } from "@/components/ui/sonner";
 import { getDashboardRouteForRole } from "@/lib/roles";
 
 export default function LoginPage() {
@@ -103,9 +102,7 @@ export default function LoginPage() {
   };
 
   return (
-    <>
-      <Toaster />
-      <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex min-h-screen items-center justify-center bg-background">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
@@ -199,6 +196,5 @@ export default function LoginPage() {
         </CardContent>
       </Card>
       </div>
-    </>
   );
 }
