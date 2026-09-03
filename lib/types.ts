@@ -28,9 +28,9 @@ export interface TimetableEntry {
   status: TimetableStatus
 }
 
-export type BlockRequestWorkType = 'routine' | 'maintenance' | 'emergency'
-export type BlockRequestStatus = 'submitted' | 'pending' | 'approved' | 'rejected' | 'in_progress' | 'completed' | 'cancelled'
-export type SafetyCriticality = 'routine' | 'critical' | 'high' | 'medium' | 'low'
+export type BlockRequestWorkType = 'track' | 'signal' | 'electrical' | 'other'
+export type BlockRequestStatus = 'submitted' | 'scored' | 'approved' | 'executed' | 'rejected'
+export type SafetyCriticality = 'routine' | 'urgent' | 'safety_critical'
 
 export interface BlockRequest {
   id: string
