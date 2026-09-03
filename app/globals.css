@@ -1,0 +1,155 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* RailSync Design System - Primary */
+    /* Royal Purple #960DF2 = HSL(268, 95%, 50%) */
+    --background: 0 0% 100%;
+    --foreground: 224 71% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71% 4%;
+    --primary: 268 95% 50%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 268 95% 45%;
+    --primary-active: 268 95% 40%;
+    --secondary: 268 95% 50%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 220 31% 98%;
+    --muted-foreground: 224 71% 30%;
+    --accent: 268 95% 50%;
+    --accent-foreground: 0 0% 100%;
+    --accent-hover: 268 95% 45%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 140 60% 40%;
+    --success-foreground: 0 0% 100%;
+    --success-hover: 140 60% 35%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 224 71% 4%;
+    --warning-hover: 38 92% 45%;
+    --border: 220 31% 90%;
+    --input: 220 31% 90%;
+    --ring: 268 95% 50%;
+    --radius: 0.75rem;
+
+    /* Neutral Grays */
+    --gray-50: 0 0% 98%;
+    --gray-100: 0 0% 95%;
+    --gray-200: 220 31% 90%;
+    --gray-300: 220 31% 80%;
+    --gray-400: 220 31% 65%;
+    --gray-500: 220 31% 50%;
+    --gray-600: 220 31% 40%;
+    --gray-700: 224 71% 28%;
+    --gray-800: 224 71% 18%;
+    --gray-900: 224 71% 12%;
+    --gray-950: 224 71% 4%;
+
+    /* Chart colors */
+    --chart-1: 220 31% 50%;
+    --chart-2: 220 31% 40%;
+    --chart-3: 220 31% 30%;
+    --chart-4: 220 31% 20%;
+    --chart-5: 220 31% 10%;
+
+    /* Sidebar variables */
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 224 71% 4%;
+    --sidebar-primary: 268 95% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 268 95% 50%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 220 31% 90%;
+    --sidebar-ring: 268 95% 50%;
+  }
+
+  .dark {
+    --background: 224 71% 4%;
+    --foreground: 0 0% 98%;
+    --card: 224 71% 7%;
+    --card-foreground: 0 0% 98%;
+    --popover: 224 71% 7%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 268 95% 55%;
+    --primary-foreground: 0 0% 98%;
+    --primary-hover: 268 95% 60%;
+    --primary-active: 268 95% 65%;
+    --secondary: 224 71% 10%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 224 71% 10%;
+    --muted-foreground: 0 0% 80%;
+    --accent: 268 95% 55%;
+    --accent-foreground: 0 0% 98%;
+    --accent-hover: 268 95% 60%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 140 60% 50%;
+    --success-foreground: 0 0% 100%;
+    --success-hover: 140 60% 55%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 224 71% 5%;
+    --warning-hover: 38 92% 60%;
+    --border: 224 71% 18%;
+    --input: 224 71% 18%;
+    --ring: 268 95% 55%;
+
+    --gray-50: 224 71% 8%;
+    --gray-100: 224 71% 10%;
+    --gray-200: 224 71% 14%;
+    --gray-300: 224 71% 18%;
+    --gray-400: 224 71% 25%;
+    --gray-500: 224 71% 30%;
+    --gray-600: 224 71% 40%;
+    --gray-700: 224 71% 50%;
+    --gray-800: 0 0% 95%;
+    --gray-900: 0 0% 98%;
+    --gray-950: 0 0% 100%;
+
+    --chart-1: 224 71% 80%;
+    --chart-2: 224 71% 70%;
+    --chart-3: 224 71% 60%;
+    --chart-4: 224 71% 50%;
+    --chart-5: 224 71% 40%;
+
+    --sidebar: 224 71% 7%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 268 95% 60%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 224 71% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 224 71% 18%;
+    --sidebar-ring: 268 95% 60%;
+  }
+
+  /* Animate */
+  html {
+    scroll-behavior: smooth;
+    @apply font-sans;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  }
+
+  :root {
+    --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    --font-mono: "Roboto Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+
+  .theme {
+    --font-heading: var(--font-sans);
+    --font-sans: var(--font-sans);
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+}
