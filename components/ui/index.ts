@@ -64,6 +64,7 @@ export {
 } from "./dropdown-menu";
 export { Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage } from "./avatar";
 export { Skeleton } from "./skeleton";
+export { Progress } from "./progress";
 export { Toaster } from "./sonner";
 export { toast } from "sonner";
 export { Slider } from "./slider";
