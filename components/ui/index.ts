@@ -66,4 +66,5 @@ export { Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount, Ava
 export { Skeleton } from "./skeleton";
 export { Toaster } from "./sonner";
 export { toast } from "sonner";
+export { Slider } from "./slider";
 export { Separator } from "./separator";
