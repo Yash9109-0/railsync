@@ -67,4 +67,5 @@ export { Skeleton } from "./skeleton";
 export { Progress } from "./progress";
 export { Toaster } from "./sonner";
 export { toast } from "sonner";
+export { Slider } from "./slider";
 export { Separator } from "./separator";

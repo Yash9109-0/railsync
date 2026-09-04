@@ -326,6 +326,14 @@ export default function MaintenancePage() {
   }, [requests, searchQuery, statusFilter, segments])
 
   return (
+<<<<<<< HEAD
+    <div className="p-6">
+      <h1 className="text-2xl font-bold">Maintenance</h1>
+      <p className="text-muted-foreground">Maintenance tracking page.</p>
+    </div>
+  )
+}
+=======
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Maintenance</h1>
@@ -656,3 +664,4 @@ function formatFromTimestamp(dateString: string): string {
   }
   return toDateTimeLocal(date)
 }
+
