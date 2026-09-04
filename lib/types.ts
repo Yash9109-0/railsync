@@ -53,7 +53,7 @@ export interface BlockRequest {
   created_at: string
 }
 
-export type ApprovalDecision = 'approved' | 'rejected' | 'deferred' | 'pending'
+export type ApprovalDecision = 'approved' | 'modified' | 'rejected' | 'deferred' | 'pending'
 
 export interface Approval {
   id: string
