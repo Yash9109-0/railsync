@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
+import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 const inter = Inter({
