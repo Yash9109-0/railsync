@@ -44,8 +44,12 @@ import type {
   Segment,
   Station,
 } from "@/lib/types"
-import MapPreview from "@/components/MapPreview"
 import { Progress } from "@/components/ui/progress"
+import dynamic from "next/dynamic"
+
+const MapPreview = dynamic(() => import("@/components/MapPreview"), {
+  ssr: false,
+})
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   approved: {
