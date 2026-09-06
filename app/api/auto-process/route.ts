@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
     ]
 
     // Helper: count trains in the timetable overlapping a given window.
-    async function countTrainsInWindow(start: Date, durationMins: number): Promise<number> {
+    const countTrainsInWindow = async (start: Date, durationMins: number): Promise<number> => {
       const end = new Date(start.getTime() + durationMins * 60000)
       try {
         const { count } = await supabase
@@ -228,7 +228,7 @@ export async function POST(request: NextRequest) {
     )
 
     // --- 8. Generate explanations (+ what_if_note for the recommended one) concurrently ---
-    async function generateExplanation(opt: ScoredOption): Promise<string> {
+    const generateExplanation = async (opt: ScoredOption): Promise<string> => {
       try {
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
@@ -237,9 +237,9 @@ export async function POST(request: NextRequest) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-  model: 'google/gemini-2.5-flash',
-  max_tokens: 200,
-  messages: [
+            model: 'google/gemini-2.5-flash',
+            max_tokens: 200,
+            messages: [
               {
                 role: 'system',
                 content:
@@ -253,13 +253,17 @@ export async function POST(request: NextRequest) {
           }),
         })
         const data = await response.json()
+        if (!response.ok || !data.choices) {
+          console.error('OpenRouter error response:', JSON.stringify(data))
+          return 'No explanation available.'
+        }
         return data.choices?.[0]?.message?.content?.trim() ?? 'No explanation available.'
       } catch {
         return 'No explanation available.'
       }
     }
 
-    async function generateWhatIfNote(opt: ScoredOption): Promise<string> {
+    const generateWhatIfNote = async (opt: ScoredOption): Promise<string> => {
       try {
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
@@ -268,9 +272,9 @@ export async function POST(request: NextRequest) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-  model: 'google/gemini-2.5-flash',
-  max_tokens: 100,
-  messages: [
+            model: 'google/gemini-2.5-flash',
+            max_tokens: 100,
+            messages: [
               {
                 role: 'system',
                 content:
@@ -284,6 +288,10 @@ export async function POST(request: NextRequest) {
           }),
         })
         const data = await response.json()
+        if (!response.ok || !data.choices) {
+          console.error('OpenRouter error response:', JSON.stringify(data))
+          return ''
+        }
         return data.choices?.[0]?.message?.content?.trim() ?? ''
       } catch {
         return ''
