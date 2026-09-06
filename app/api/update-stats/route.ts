@@ -3,27 +3,27 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 export async function POST(req: Request) {
   try {
     const { segment_id, work_type } = await req.json()
-    if (!segment_id ||!work_type) {
+    if (!segment_id || !work_type) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     }
 
     const { data: logs, error } = await supabase
-     .from('execution_logs')
-     .select(`
+      .from('execution_logs')
+      .select(`
         actual_start,
         actual_end,
         block_request_id,
         block_requests!inner(segment_id, work_type, requested_duration_mins)
       `)
-     .eq('status', 'completed')
-     .eq('block_requests.segment_id', segment_id)
-     .eq('block_requests.work_type', work_type)
+      .eq('status', 'completed')
+      .eq('block_requests.segment_id', segment_id)
+      .eq('block_requests.work_type', work_type)
 
     if (error) throw error
 
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
     for (const log of logs as any[]) {
       const br = log.block_requests
-      if (!log.actual_start ||!log.actual_end ||!br?.requested_duration_mins) continue
+      if (!log.actual_start || !log.actual_end || !br?.requested_duration_mins) continue
       const start = new Date(log.actual_start).getTime()
       const end = new Date(log.actual_end).getTime()
       const actualMins = (end - start) / 60000
@@ -59,8 +59,8 @@ export async function POST(req: Request) {
     avgRate = Math.max(0, avgRate)
 
     const { error: upsertError } = await supabase
-     .from('segment_stats')
-     .upsert({
+      .from('segment_stats')
+      .upsert({
         segment_id,
         work_type,
         historical_overrun_rate: avgRate,
