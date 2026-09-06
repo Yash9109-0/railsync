@@ -46,6 +46,7 @@ export interface BlockRequest {
   segment_id: number | null
   requested_by: string | null
   work_type: BlockRequestWorkType
+  work_description: string | null
   requested_start: string
   requested_duration_mins: number
   safety_criticality: SafetyCriticality
@@ -54,7 +55,6 @@ export interface BlockRequest {
   delay_risk: string | null
   ai_explanation: string | null
   department: Department | null
-  work_description: string | null
   justification: string | null
   created_at: string
 }
@@ -116,6 +116,18 @@ export interface RetrainingLog {
   notes: string | null
 }
 
+export interface BlockPlanOption {
+  id: string
+  block_request_id: string
+  adjusted_start: string
+  adjusted_duration_mins: number
+  priority_score: number | null
+  delay_risk: string | null
+  explanation: string | null
+  is_recommended: boolean | null
+  created_at: string
+}
+
 export type Tables =
   | { table: 'profiles'; row: Profile }
   | { table: 'stations'; row: Station }
@@ -127,6 +139,7 @@ export type Tables =
   | { table: 'block_plan_options'; row: PlanOption }
   | { table: 'segment_stats'; row: SegmentStats }
   | { table: 'retraining_log'; row: RetrainingLog }
+  | { table: 'block_plan_options'; row: BlockPlanOption }
 
 export type TableName = Tables['table']
 
