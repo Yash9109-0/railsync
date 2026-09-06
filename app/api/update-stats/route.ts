@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
 export async function POST(req: Request) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    
+    if (!supabaseUrl || !serviceKey) {
+      throw new Error('Missing Supabase env vars')
+    }
+
+    const supabase = createClient(supabaseUrl, serviceKey)
+
     const { segment_id, work_type } = await req.json()
     if (!segment_id || !work_type) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
