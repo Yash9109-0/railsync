@@ -148,10 +148,11 @@ function statusLabel(status: TimetableStatus) {
 }
 
 function fmtDateTime(iso: string) {
+  if (!iso) return "-";
   return new Date(iso).toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
-  });
+  }).toLowerCase(); // <-- ye add kar diya, ab dono jagah 'pm' hi aayega
 }
 
 function fmtDateTimeLocal(iso: string) {
@@ -628,7 +629,7 @@ function TimeSavedAnalytics({
             <AlertCircle className="h-3 w-3" />
             Manual baseline (18 min) is illustrative; no live manual-process data
             is tracked. AI-assisted value reflects the average approval time this
-            session (started {new Date(sessionStart).toLocaleTimeString()}).
+            session (started <span suppressHydrationWarning>{sessionStart ? new Date(sessionStart).toLocaleTimeString() : ""}</span>).
           </CardDescription>
         </CardContent>
       </Card>
@@ -655,6 +656,13 @@ export default function ControlPage() {
   const supabaseRef = useRef<ReturnType<typeof createClient>>();
   if (!supabaseRef.current) supabaseRef.current = createClient();
   const supabase = supabaseRef.current;
+  const [liveTime, setLiveTime] = useState("");
+useEffect(() => {
+  const tick = () => setLiveTime(new Date().toLocaleTimeString());
+  tick();
+  const id = setInterval(tick, 1000);
+  return () => clearInterval(id);
+}, []);
 
   const [user, setUser] = useState<User | null>(null);
 
@@ -998,14 +1006,9 @@ export default function ControlPage() {
               <Separator orientation="vertical" className="h-3" />
               <span>Auto-refreshes every 15s</span>
               <Separator orientation="vertical" className="h-3" />
-              <span>
-                Last updated:{" "}
-                {new Date().toLocaleTimeString(undefined, {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                })}
-              </span>
+            <span suppressHydrationWarning>
+           Last updated: {liveTime}
+           </span>
             </div>
           </div>
 
@@ -1104,9 +1107,9 @@ export default function ControlPage() {
                           {br.segments?.name ?? `ID ${br.id.slice(0, 8)}`}
                         </CardTitle>
                         <CardDescription>
-                          {fmtDateTime(br.requested_start)} ·{" "}
-                          {fmtDuration(br.requested_duration_mins)}
-                        </CardDescription>
+  <span suppressHydrationWarning>{fmtDateTime(br.requested_start)}</span> ·{" "}
+  {fmtDuration(br.requested_duration_mins)}
+</CardDescription>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge
