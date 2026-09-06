@@ -1,205 +1,314 @@
-"use client"
+"use client";
 
-import { useEffect, useRef, useState } from "react"
-import { Train } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { useEffect, useMemo, useState } from "react";
+import { Train } from "lucide-react";
 
-interface TimetableRow {
-  train_number: string
-  scheduled_time: string
+export interface TimetableEntry {
+  train_number: string;
+  scheduled_time: string;
+  track?: string | null;
+  status?: string | null;
 }
 
-const SEGMENTS = ["A-B", "B-C", "C-D", "D-E"]
-const STATIONS = ["A", "B", "C", "D", "E"]
-const MINUTES_PER_SEGMENT = 20
-const TOTAL_MINUTES = SEGMENTS.length * MINUTES_PER_SEGMENT
-const RECOMPUTE_MS = 5_000
-const REFRESH_MS = 30_000
-const FETCH_INTERVAL_TICKS = REFRESH_MS / RECOMPUTE_MS
+export interface LiveTrackMapProps {
+  timetable?: TimetableEntry[];
+}
 
-const VIEW_W = 900
-const VIEW_H = 200
-const TRACK_Y = 100
-const TRAIN_Y = 92
-const PADDING = 70
-const TRACK_LEN = VIEW_W - 2 * PADDING
-const SEG_LEN = TRACK_LEN / SEGMENTS.length
-const stationX = (i: number) => PADDING + SEG_LEN * i
+const STATIONS = ["STN1", "STN2", "STN3", "STN4", "STN5"] as const;
+const NUM_SEGMENTS = STATIONS.length - 1;
+const MINUTES_PER_SEGMENT = 20;
+const TOTAL_MINUTES = NUM_SEGMENTS * MINUTES_PER_SEGMENT;
+const RECOMPUTE_MS = 5_000;
+
+type TrackId = "up" | "down" | "loop";
+
+interface TrackConfig {
+  id: TrackId;
+  label: string;
+  y: number;
+  signalY: number;
+}
+
+const TRACKS: TrackConfig[] = [
+  { id: "up", label: "UP Main (Track 1)", y: 70, signalY: 45 },
+  { id: "down", label: "DOWN Main (Track 2)", y: 120, signalY: 95 },
+  { id: "loop", label: "Loop/Siding (Track 3)", y: 170, signalY: 145 },
+];
+
+const VIEW_W = 900;
+const VIEW_H = 300;
+const PADDING = 80;
+const TRACK_LEN = VIEW_W - 2 * PADDING;
+const SEG_LEN = TRACK_LEN / NUM_SEGMENTS;
+const stationX = (i: number) => PADDING + SEG_LEN * i;
+const STATION_R = 12;
+const LABEL_Y = 205;
 
 interface ComputedTrain {
-  train_number: string
-  segmentIndex: number
-  progress: number
+  train_number: string;
+  segmentIndex: number;
+  progress: number;
+  track: TrackId;
 }
 
 function todayBounds(now: Date) {
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000)
-  return { start: start.getTime(), end: end.getTime() }
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { start: start.getTime(), end: end.getTime() };
 }
 
-function computeTrains(rows: TimetableRow[], now: number): ComputedTrain[] {
-  const earliest = new Map<string, number>()
+function resolveTrackKey(t: string | null | undefined): TrackId | null {
+  if (!t) return null;
+  const s = String(t).toLowerCase().trim();
+  if (s === "up" || s === "1" || s === "track-1" || s === "track1" || s === "main")
+    return "up";
+  if (s === "down" || s === "2" || s === "track-2" || s === "track2")
+    return "down";
+  if (s === "loop" || s === "3" || s === "siding" || s === "track-3" || s === "track3")
+    return "loop";
+  return null;
+}
+
+function assignTrack(index: number, total: number): TrackId {
+  if (total > 2 && index === total - 1) return "loop";
+  return index % 2 === 0 ? "up" : "down";
+}
+
+function computeActiveTrains(
+  rows: TimetableEntry[],
+  now: number,
+): ComputedTrain[] {
+  const earliest = new Map<string, number>();
   for (const row of rows) {
-    const t = Date.parse(row.scheduled_time)
-    if (!Number.isFinite(t)) continue
-    const prev = earliest.get(row.train_number)
-    if (prev === undefined || t < prev) earliest.set(row.train_number, t)
+    const t = Date.parse(row.scheduled_time);
+    if (!Number.isFinite(t)) continue;
+    const prev = earliest.get(row.train_number);
+    if (prev === undefined || t < prev) earliest.set(row.train_number, t);
   }
 
-  const result: ComputedTrain[] = []
+  type TrainPos = {
+    train_number: string;
+    segmentIndex: number;
+    progress: number;
+    departedAt: number;
+  };
+
+  const positions: TrainPos[] = [];
+
   earliest.forEach((departedAt, train_number) => {
-    const elapsedMin = (now - departedAt) / 60_000
-    if (elapsedMin < 0 || elapsedMin >= TOTAL_MINUTES) return
+    const elapsedMin = (now - departedAt) / 60_000;
+    if (elapsedMin < 0 || elapsedMin >= TOTAL_MINUTES) return;
     const segmentIndex = Math.min(
-      SEGMENTS.length - 1,
-      Math.floor(elapsedMin / MINUTES_PER_SEGMENT)
-    )
+      NUM_SEGMENTS - 1,
+      Math.max(0, Math.floor(elapsedMin / MINUTES_PER_SEGMENT)),
+    );
     const progress =
       elapsedMin < segmentIndex * MINUTES_PER_SEGMENT
         ? 0
-        : (elapsedMin % MINUTES_PER_SEGMENT) / MINUTES_PER_SEGMENT
-    result.push({ train_number, segmentIndex, progress })
-  })
-  return result
+        : (elapsedMin % MINUTES_PER_SEGMENT) / MINUTES_PER_SEGMENT;
+    positions.push({ train_number, segmentIndex, progress, departedAt });
+  });
+
+  positions.sort((a, b) => a.departedAt - b.departedAt);
+
+  return positions.map((p, i) => {
+    const rowWithTrack = rows.find(
+      (r) => r.train_number === p.train_number && r.track,
+    );
+    const resolved = rowWithTrack ? resolveTrackKey(rowWithTrack.track) : null;
+    return {
+      train_number: p.train_number,
+      segmentIndex: p.segmentIndex,
+      progress: p.progress,
+      track: resolved ?? assignTrack(i, positions.length),
+    };
+  });
 }
 
-export default function LiveTrackMap() {
-  const supabaseRef = useRef<ReturnType<typeof createClient>>()
-  if (!supabaseRef.current) supabaseRef.current = createClient()
-  const supabase = supabaseRef.current
-
-  const [rows, setRows] = useState<TimetableRow[]>([])
-  const [now, setNow] = useState(() => Date.now())
+export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      const { data, error } = await supabase
-        .from("timetable")
-        .select("train_number, scheduled_time")
-        .order("scheduled_time", { ascending: true })
-      if (!cancelled && !error && data) setRows(data as TimetableRow[])
-    }
-    load()
-    let tick = 0
-    const id = setInterval(() => {
-      tick += 1
-      setNow(Date.now())
-      if (tick % FETCH_INTERVAL_TICKS === 0) load()
-    }, RECOMPUTE_MS)
-    return () => {
-      cancelled = true
-      clearInterval(id)
-    }
-  }, [supabase])
+    const id = setInterval(() => setNow(Date.now()), RECOMPUTE_MS);
+    return () => clearInterval(id);
+  }, []);
 
-  const { start, end } = todayBounds(new Date(now))
-  const todayRows = rows.filter((r) => {
-    const t = Date.parse(r.scheduled_time)
-    return t >= start && t < end
-  })
-  const trains = computeTrains(todayRows, now)
-  const occupied = new Set(trains.map((t) => t.segmentIndex))
+  const trains = useMemo(() => {
+    const { start, end } = todayBounds(new Date(now));
+    const todayRows = timetable.filter((r) => {
+      const t = Date.parse(r.scheduled_time);
+      return Number.isFinite(t) && t >= start && t < end;
+    });
+    return computeActiveTrains(todayRows, now);
+  }, [timetable, now]);
+
+  const occupied = useMemo(() => {
+    const occ: Record<TrackId, Set<number>> = {
+      up: new Set(),
+      down: new Set(),
+      loop: new Set(),
+    };
+    for (const t of trains) {
+      occ[t.track].add(t.segmentIndex);
+    }
+    return occ;
+  }, [trains]);
 
   return (
-    <div className="relative w-full max-w-3xl aspect-[9/2]">
-      <svg
-        className="absolute inset-0 h-full w-full"
-        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-        role="img"
-        aria-label="Live train track map"
-        aria-live="polite"
-      >
-        <title>Live Train Track Map</title>
-        <desc>
-          Stations A through E connected by track segments with live train
-          positions and signal status.
-        </desc>
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground">
+        {TRACKS.map((track) => (
+          <span key={track.id}>{track.label}</span>
+        ))}
+      </div>
 
-        <g className="stroke-gray-200" strokeWidth={6} strokeLinecap="round">
-          {SEGMENTS.map((_, i) => (
-            <line
-              key={`seg-line-${i}`}
-              x1={stationX(i)}
-              y1={TRACK_Y}
-              x2={stationX(i + 1)}
-              y2={TRACK_Y}
-            />
-          ))}
-        </g>
+      <div className="relative w-full max-w-3xl mx-auto aspect-[3/1]">
+        <svg
+          className="absolute inset-0 h-full w-full"
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          role="img"
+          aria-label="Live corridor track map with 3 parallel tracks"
+        >
+          <title>Live Corridor Track Map</title>
+          <desc>
+            Three parallel railway tracks (UP Main, DOWN Main, Loop/Siding)
+            with stations STN1 through STN5. Green signal dots indicate clear
+            segments; red dots indicate segments occupied by a train.
+          </desc>
 
-        {SEGMENTS.map((_, i) => {
-          const mid = (stationX(i) + stationX(i + 1)) / 2
-          return (
-            <g key={`seg-${i}`}>
-              <circle
-                cx={mid}
-                cy={66}
-                r={6}
-                className={
-                  occupied.has(i) ? "fill-red-500" : "fill-green-500"
-                }
-              />
+          {TRACKS.map((track) => (
+            <g
+              key={`lines-${track.id}`}
+              strokeWidth={6}
+              strokeLinecap="round"
+              className="stroke-gray-300"
+            >
+              {Array.from({ length: NUM_SEGMENTS }).map((_, i) => (
+                <line
+                  key={`line-${track.id}-${i}`}
+                  x1={stationX(i)}
+                  y1={track.y}
+                  x2={stationX(i + 1)}
+                  y2={track.y}
+                />
+              ))}
             </g>
-          )
-        })}
+          ))}
 
-        <g className="fill-gray-700 font-medium" fontSize={12} textAnchor="middle">
+          {TRACKS.map((track) => (
+            <text
+              key={`tlabel-${track.id}`}
+              x={10}
+              y={track.y + 4}
+              fontSize={11}
+              className="fill-gray-500"
+            >
+              T{track.id === "up" ? 1 : track.id === "down" ? 2 : 3}
+            </text>
+          ))}
+
+          {TRACKS.map((track) =>
+            Array.from({ length: NUM_SEGMENTS }).map((_, i) => {
+              const midX = (stationX(i) + stationX(i + 1)) / 2;
+              const isOccupied = occupied[track.id].has(i);
+              return (
+                <circle
+                  key={`signal-${track.id}-${i}`}
+                  cx={midX}
+                  cy={track.signalY}
+                  r={6}
+                  className={
+                    isOccupied ? "fill-red-500" : "fill-green-500"
+                  }
+                />
+              );
+            }),
+          )}
+
+          {TRACKS.map((track) =>
+            STATIONS.map((_, i) => (
+              <circle
+                key={`station-${track.id}-${i}`}
+                cx={stationX(i)}
+                cy={track.y}
+                r={STATION_R}
+                className="fill-white stroke-gray-400 stroke-2"
+              />
+            )),
+          )}
+
           {STATIONS.map((label, i) => (
-            <text key={`station-${label}`} x={stationX(i)} y={128}>
+            <text
+              key={`stationlabel-${label}`}
+              x={stationX(i)}
+              y={LABEL_Y}
+              textAnchor="middle"
+              fontSize={13}
+              fontWeight={600}
+              className="fill-gray-700"
+            >
               {label}
             </text>
           ))}
-        </g>
 
-        {STATIONS.map((_, i) => (
-          <circle
-            key={`node-${i}`}
-            cx={stationX(i)}
-            cy={TRACK_Y}
-            r={18}
-            className="fill-white stroke-gray-400 stroke-2"
-          />
-        ))}
-
-        <g fontSize={11}>
-          <circle cx={70} cy={18} r={6} className="fill-green-500" />
-          <text x={88} y={21} className="fill-gray-600">
-            Signal Clear
-          </text>
-          <circle cx={200} cy={18} r={6} className="fill-red-500" />
-          <text x={218} y={21} className="fill-gray-600">
-            Signal Occupied
-          </text>
-        </g>
-
-        {rows.length === 0 && (
           <text
-            x={VIEW_W / 2}
-            y={VIEW_H / 2 + 30}
-            className="fill-gray-400"
-            fontSize={13}
-            textAnchor="middle"
+            x={VIEW_W - PADDING}
+            y={LABEL_Y}
+            textAnchor="end"
+            fontSize={12}
+            className="fill-gray-500"
           >
-            No timetable data for today
+            {trains.length > 0
+              ? `${trains.length} active train${trains.length === 1 ? "" : "s"}`
+              : "No active trains"}
           </text>
-        )}
-      </svg>
+        </svg>
 
-      {trains.map((t) => {
-        const x = stationX(t.segmentIndex) + t.progress * SEG_LEN
-        return (
-          <div
-            key={t.train_number}
-            className="absolute top-[46%] -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none"
-            style={{ left: `${(x / VIEW_W) * 100}%` }}
-            aria-label={`Train ${t.train_number} on segment ${SEGMENTS[t.segmentIndex]}`}
-          >
-            <Train className="h-4 w-4 text-blue-600" />
+        {trains.map((t) => {
+          const x = stationX(t.segmentIndex) + t.progress * SEG_LEN;
+          const track = TRACKS.find((tr) => tr.id === t.track);
+          const y = track ? track.y : 0;
+          const trackLabel = track ? track.label : "Track";
+          return (
+            <div
+              key={t.train_number}
+              className="absolute z-10 flex items-center gap-1 pointer-events-none"
+              style={{
+                left: `${(x / VIEW_W) * 100}%`,
+                top: `${(y / VIEW_H) * 100}%`,
+                transform: "translate(-50%, -50%)",
+              }}
+              aria-label={`Train ${t.train_number} on ${trackLabel}, segment ${t.segmentIndex + 1}`}
+            >
+              <Train className="h-5 w-5 text-blue-600" />
+              <span className="text-xs font-medium text-blue-700 whitespace-nowrap">
+                {t.train_number}
+              </span>
+            </div>
+          );
+        })}
+
+        {trains.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+            No active trains on the corridor right now
           </div>
-        )
-      })}
+        )}
+      </div>
+
+      <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-full bg-green-500" />
+          <span>Signal Clear</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-full bg-red-500" />
+          <span>Signal Occupied</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Train className="h-4 w-4 text-blue-600" />
+          <span>Train</span>
+        </span>
+      </div>
     </div>
-  )
+  );
 }

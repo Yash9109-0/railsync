@@ -124,7 +124,7 @@ interface VerifyLogRow {
   } | null;
 }
 
-const POLL_INTERVAL_MS = 15_000;
+const POLL_INTERVAL_MS = 30_000;
 const MANUAL_BASELINE_MINS = 18;
 
 function statusVariant(
@@ -985,8 +985,6 @@ useEffect(() => {
         </Button>
       </div>
 
-      <LiveTrackMap />
-
       <Tabs defaultValue="timetable" className="space-y-4">
         <TabsList>
           <TabsTrigger value="timetable">Timetable</TabsTrigger>
@@ -1014,10 +1012,10 @@ useEffect(() => {
 
           <Card>
             <CardHeader>
-              <CardTitle>Live Corridor View</CardTitle>
+              <CardTitle>Live Corridor View - Multi-Track</CardTitle>
             </CardHeader>
             <CardContent>
-              <LiveTrackMap />
+              <LiveTrackMap timetable={timetable} />
             </CardContent>
           </Card>
 

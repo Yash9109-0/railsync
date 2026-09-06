@@ -47,7 +47,6 @@ export interface BlockRequest {
   delay_risk: string | null
   ai_explanation: string | null
   department: Department | null
-  work_description: string | null
   justification: string | null
   created_at: string
 }
@@ -100,8 +99,6 @@ export interface ExecutionLog {
   status: ExecutionLogStatus | null
   verified: boolean | null
   created_at: string
-  status: string | null
-  verified: boolean | null
 }
 
 export interface RetrainingLog {
