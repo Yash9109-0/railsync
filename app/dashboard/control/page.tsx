@@ -148,7 +148,7 @@ function statusLabel(status: TimetableStatus) {
 }
 
 function fmtDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
+  return new Date(iso).toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -1050,7 +1050,7 @@ export default function ControlPage() {
                     <TableRow key={row.id}>
                       <TableCell className="font-mono">{row.train_number}</TableCell>
                       <TableCell>{row.segments?.name ?? "—"}</TableCell>
-                      <TableCell>{fmtDateTime(row.scheduled_time)}</TableCell>
+                      <TableCell><span suppressHydrationWarning>{fmtDateTime(row.scheduled_time)}</span></TableCell>
                       <TableCell className="text-right">
                         <Badge variant={statusVariant(row.status)} className="capitalize">
                           {statusLabel(row.status)}
