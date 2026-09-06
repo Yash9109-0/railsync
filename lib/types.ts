@@ -28,21 +28,16 @@ export interface TimetableEntry {
   status: TimetableStatus
 }
 
-<<<<<<< HEAD
-export type BlockRequestWorkType = 'routine' | 'maintenance' | 'emergency'
-export type BlockRequestStatus = 'submitted' | 'pending' | 'scored' | 'approved' | 'rejected' | 'in_progress' | 'completed' | 'cancelled'
-export type SafetyCriticality = 'routine' | 'critical' | 'high' | 'medium' | 'low'
-=======
 export type BlockRequestWorkType = 'track' | 'signal' | 'electrical' | 'other'
 export type BlockRequestStatus = 'submitted' | 'scored' | 'approved' | 'executed' | 'rejected'
 export type SafetyCriticality = 'routine' | 'urgent' | 'safety_critical'
->>>>>>> master
 
 export interface BlockRequest {
   id: string
   segment_id: number | null
   requested_by: string | null
   work_type: BlockRequestWorkType
+  work_description: string | null
   requested_start: string
   requested_duration_mins: number
   safety_criticality: SafetyCriticality
@@ -75,6 +70,8 @@ export interface ExecutionLog {
   geo_lat: number | null
   geo_lng: number | null
   created_at: string
+  status: string | null
+  verified: boolean | null
 }
 
 export interface RetrainingLog {
@@ -82,6 +79,18 @@ export interface RetrainingLog {
   run_at: string
   mae: number | null
   notes: string | null
+}
+
+export interface BlockPlanOption {
+  id: string
+  block_request_id: string
+  adjusted_start: string
+  adjusted_duration_mins: number
+  priority_score: number | null
+  delay_risk: string | null
+  explanation: string | null
+  is_recommended: boolean | null
+  created_at: string
 }
 
 export type Tables =
@@ -93,6 +102,7 @@ export type Tables =
   | { table: 'approvals'; row: Approval }
   | { table: 'execution_logs'; row: ExecutionLog }
   | { table: 'retraining_log'; row: RetrainingLog }
+  | { table: 'block_plan_options'; row: BlockPlanOption }
 
 export type TableName = Tables['table']
 

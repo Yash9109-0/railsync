@@ -275,6 +275,7 @@ function LogExecutionDialog({
         actual_end: end.toISOString(),
         geo_lat: geoLat ? Number(geoLat) : null,
         geo_lng: geoLng ? Number(geoLng) : null,
+        status: "completed",
       })
 
       if (logError) throw logError

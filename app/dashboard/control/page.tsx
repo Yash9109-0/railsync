@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Badge,
@@ -9,6 +10,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
   Dialog,
@@ -54,8 +56,10 @@ import {
   AlertCircle,
   AlertTriangle,
 } from "lucide-react";
+import LiveTrackMap from "@/components/LiveTrackMap";
 import type {
   ApprovalDecision,
+  BlockPlanOption,
   BlockRequestStatus,
   BlockRequestWorkType,
   SafetyCriticality,
@@ -87,6 +91,7 @@ interface BlockRequestRow {
   ai_explanation: string | null;
   created_at: string;
   segments: SegmentName | null;
+  block_plan_options: BlockPlanOption[] | null;
 }
 interface ApprovalRow {
   id: string;
@@ -97,6 +102,26 @@ interface ApprovalRow {
   modified_duration_mins: number | null;
   decided_at: string;
   block_requests: { created_at: string } | null;
+}
+
+interface VerifyLogRow {
+  id: string;
+  block_request_id: string | null;
+  before_image_url: string | null;
+  after_image_url: string | null;
+  actual_start: string | null;
+  actual_end: string | null;
+  geo_lat: number | null;
+  geo_lng: number | null;
+  created_at: string;
+  status: string | null;
+  verified: boolean | null;
+  block_requests: {
+    work_description: string | null;
+    work_type: BlockRequestWorkType;
+    requested_duration_mins: number | null;
+    segments: { name: string } | null;
+  } | null;
 }
 
 const POLL_INTERVAL_MS = 15_000;
@@ -178,28 +203,41 @@ function delayRiskLabel(risk: string | null): string {
   return risk.charAt(0).toUpperCase() + risk.slice(1);
 }
 
+const WORK_TYPE_LABEL: Record<string, string> = {
+  track: "Track",
+  signal: "Signal",
+  electrical: "Electrical",
+  other: "Other",
+};
+
+function workTypeLabel(workType: BlockRequestWorkType): string {
+  return WORK_TYPE_LABEL[workType] ?? workType;
+}
+
+function fmtVarianceMins(mins: number): string {
+  if (mins === 0) return "0 min (on time)";
+  const sign = mins > 0 ? "+" : "";
+  return `${sign}${mins} min ${mins > 0 ? "over" : "under"} planned`;
+}
+
+function computeVarianceMins(
+  log: VerifyLogRow,
+): number | null {
+  if (!log.actual_start || !log.actual_end) return null;
+  const requested = log.block_requests?.requested_duration_mins ?? null;
+  if (requested == null) return null;
+  const actualMs =
+    new Date(log.actual_end).getTime() - new Date(log.actual_start).getTime();
+  const actualMins = Math.round(actualMs / 60000);
+  return actualMins - requested;
+}
+
 const DELAY_RISK_BADGE: Record<NonNullable<ReturnType<typeof delayRiskKey>>, { variant: "default" | "secondary" | "destructive" | "outline" | "ghost" | "link"; label: string }> = {
   low: { variant: "default", label: "Low" },
   medium: { variant: "secondary", label: "Medium" },
   high: { variant: "destructive", label: "High" },
   critical: { variant: "destructive", label: "Critical" },
   none: { variant: "outline", label: "Unknown" },
-};
-
-const DELAY_RISK_ROW_CLASS: Record<NonNullable<ReturnType<typeof delayRiskKey>>, string> = {
-  low: "bg-success/5",
-  medium: "bg-warning/5",
-  high: "bg-destructive/5",
-  critical: "bg-destructive/10",
-  none: "",
-};
-
-const DELAY_RISK_BORDER: Record<NonNullable<ReturnType<typeof delayRiskKey>>, string> = {
-  low: "border-l-2 border-success",
-  medium: "border-l-2 border-warning",
-  high: "border-l-2 border-destructive",
-  critical: "border-l-2 border-destructive",
-  none: "border-l-2 border-border",
 };
 
 interface StatCardProps {
@@ -226,6 +264,52 @@ function StatCard({ title, value, icon, desc }: StatCardProps) {
   );
 }
 
+interface AnalyticsSummary {
+  estimated_passenger_delay_reduction_mins: number;
+  track_asset_availability_gain_pct: number;
+  total_approved: number;
+  total_time_saved_mins: number;
+}
+
+// block_plan_options carries an extra runtime `option_label` column (not declared
+// in lib/types); extend the shape so it is visible to the breakdown logic.
+interface PlanOptionWithLabel {
+  id: string;
+  block_request_id: string;
+  adjusted_duration_mins: number | null;
+  option_label?: string | null;
+  is_recommended?: boolean | null;
+  [key: string]: unknown;
+}
+
+interface ApprovedPlanRow {
+  id: string;
+  requested_duration_mins: number | null;
+  delay_risk: string | null;
+  segments: { name: string } | null;
+  block_plan_options: PlanOptionWithLabel[] | null;
+}
+
+interface ChartSeries {
+  key: string;
+  saved: number;
+}
+
+function analyticsBaselineOption(
+  options: PlanOptionWithLabel[] | null,
+): PlanOptionWithLabel | undefined {
+  const opts = options ?? [];
+  return (
+    opts.find(
+      (o) => (o.option_label ?? "").toLowerCase().includes("as requested"),
+    ) ??
+    opts.find(
+      (o) => (o.option_label ?? "").toLowerCase().includes("option a"),
+    ) ??
+    opts[0]
+  );
+}
+
 interface TimeSavedAnalyticsProps {
   approvedCount: number;
   avgMs: number;
@@ -237,6 +321,71 @@ function TimeSavedAnalytics({
   avgMs,
   sessionStart,
 }: TimeSavedAnalyticsProps) {
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const [segmentSeries, setSegmentSeries] = useState<ChartSeries[]>([]);
+  const [riskSeries, setRiskSeries] = useState<ChartSeries[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      // 4 stat cards: aggregates from the analytics endpoint
+      try {
+        const res = await fetch("/api/analytics");
+        if (res.ok) {
+          const json: AnalyticsSummary = await res.json();
+          if (!cancelled) setSummary(json);
+        } else if (!cancelled) {
+          setSummary(null);
+        }
+      } catch {
+        if (!cancelled) setSummary(null);
+      }
+
+      // Breakdown series: approved plans joined with segment + Option A baseline
+      const supabase = createClient();
+      const { data, error: fetchError } = await supabase
+        .from("block_requests")
+        .select("*, segments(name), block_plan_options(*)")
+        .eq("status", "approved");
+      void fetchError;
+
+      if (!cancelled) {
+        const bySegment = new Map<string, number>();
+        const byRisk = new Map<string, number>();
+
+        for (const req of (data as ApprovedPlanRow[] | null) ?? []) {
+          const baseline = analyticsBaselineOption(req.block_plan_options);
+          if (!baseline || baseline.adjusted_duration_mins == null) continue;
+          const approvedDuration = Number(req.requested_duration_mins ?? 0);
+          const saved = Number(baseline.adjusted_duration_mins) - approvedDuration;
+
+          const segmentName = req.segments?.name ?? "Unknown";
+          bySegment.set(segmentName, (bySegment.get(segmentName) ?? 0) + saved);
+
+          const riskName = req.delay_risk ?? "Unknown";
+          byRisk.set(riskName, (byRisk.get(riskName) ?? 0) + saved);
+        }
+
+        const toSeries = (map: Map<string, number>): ChartSeries[] =>
+          Array.from(map, ([key, saved]) => ({ key, saved })).sort(
+            (a, b) => b.saved - a.saved,
+          );
+
+        setSegmentSeries(toSeries(bySegment));
+        setRiskSeries(toSeries(byRisk));
+      }
+
+      if (!cancelled) setLoading(false);
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const avgMins = avgMs > 0 ? Number((avgMs / 60000).toFixed(2)) : 0;
   const chartData = [
     {
@@ -251,6 +400,17 @@ function TimeSavedAnalytics({
     },
   ];
 
+  const fmtNumber = (n: number) =>
+    Number.isInteger(n) ? String(n) : n.toFixed(2);
+  const fmtPct = (n: number) =>
+    Number.isInteger(n) ? `${n}%` : `${n.toFixed(2)}%`;
+  const fmtMins = (n: number) => `${fmtNumber(n)} min`;
+
+  const chartDomain = (series: ChartSeries[]) => [
+    0,
+    Math.max(1, ...series.map((s) => s.saved)) + 5,
+  ];
+
   return (
     <section className="mt-6 space-y-4">
       <Card>
@@ -258,6 +418,172 @@ function TimeSavedAnalytics({
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             Time Saved Analytics
+          </CardTitle>
+          <CardDescription>
+            Track-time savings from approved block requests. Aggregates are
+            served by /api/analytics against the as-requested Option A baseline;
+            breakdown charts are estimated from per-request Option A baselines.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Est. Passenger Delay Reduction"
+            value={
+              summary
+                ? fmtMins(summary.estimated_passenger_delay_reduction_mins)
+                : ""
+            }
+            icon={<TrainFront className="h-4 w-4 text-muted-foreground" />}
+            desc="estimated based on AI-optimized vs as-requested plans"
+          />
+          <StatCard
+            title="Track Asset Availability Gain"
+            value={
+              summary
+                ? fmtPct(summary.track_asset_availability_gain_pct)
+                : ""
+            }
+            icon={<Sparkles className="h-4 w-4 text-muted-foreground" />}
+          />
+          <StatCard
+            title="Total Plans Approved"
+            value={summary ? String(summary.total_approved) : ""}
+            icon={<Check className="h-4 w-4 text-muted-foreground" />}
+          />
+          <StatCard
+            title="Total Time Saved"
+            value={summary ? fmtMins(summary.total_time_saved_mins) : ""}
+            icon={<Clock className="h-4 w-4 text-muted-foreground" />}
+          />
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">
+            Time Saved by Segment
+          </CardTitle>
+          <CardDescription>
+            Aggregate track time recovered per segment.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {segmentSeries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No segment breakdown available for approved plans yet.
+            </p>
+          ) : (
+            <div className="h-[260px] w-full">
+              <ResponsiveContainer>
+                <BarChart
+                  data={segmentSeries}
+                  margin={{ top: 8, right: 0, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="key" tickLine={false} axisLine={false} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={4}
+                    tickFormatter={(v) => `${v} min`}
+                    domain={chartDomain(segmentSeries)}
+                  />
+                  <Tooltip
+                    cursor={false}
+                    formatter={(v) => [
+                      `${Number(v ?? 0).toFixed(1)} min`,
+                      "Time saved",
+                    ]}
+                  />
+                  <Bar
+                    dataKey="saved"
+                    name="Time saved (min)"
+                    radius={[8, 8, 0, 0]}
+                    fill="hsl(268 95% 50%)"
+                  >
+                    <LabelList
+                      position="top"
+                      offset={4}
+                      formatter={(v) => `${Number(v ?? 0).toFixed(1)} min`}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">
+            Time Saved by Delay Risk
+          </CardTitle>
+          <CardDescription>
+            Track time recovered grouped by the request's delay risk tier.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {riskSeries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No delay-risk breakdown available for approved plans yet.
+            </p>
+          ) : (
+            <div className="h-[260px] w-full">
+              <ResponsiveContainer>
+                <BarChart
+                  data={riskSeries}
+                  margin={{ top: 8, right: 0, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="key" tickLine={false} axisLine={false} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={4}
+                    tickFormatter={(v) => `${v} min`}
+                    domain={chartDomain(riskSeries)}
+                  />
+                  <Tooltip
+                    cursor={false}
+                    formatter={(v) => [
+                      `${Number(v ?? 0).toFixed(1)} min`,
+                      "Time saved",
+                    ]}
+                  />
+                  <Bar
+                    dataKey="saved"
+                    name="Time saved (min)"
+                    radius={[8, 8, 0, 0]}
+                    fill="hsl(216 93% 60%)"
+                  >
+                    <LabelList
+                      position="top"
+                      offset={4}
+                      formatter={(v) => `${Number(v ?? 0).toFixed(1)} min`}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Check className="h-5 w-5 text-primary" />
+            Approval Processing Time
           </CardTitle>
           <CardDescription>
             AI-assisted average order processing time vs. an illustrative manual
@@ -338,6 +664,8 @@ export default function ControlPage() {
   const [loadingPending, setLoadingPending] = useState(true);
   const [approvals, setApprovals] = useState<ApprovalRow[]>([]);
   const [loadingApprovals, setLoadingApprovals] = useState(true);
+  const [verifyLogs, setVerifyLogs] = useState<VerifyLogRow[]>([]);
+  const [loadingVerify, setLoadingVerify] = useState(true);
 
   const [refreshing, setRefreshing] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
@@ -350,6 +678,7 @@ export default function ControlPage() {
   const [modifyStart, setModifyStart] = useState("");
   const [modifyDuration, setModifyDuration] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
 
   const sessionStartRef = useRef<number>(Date.now());
 
@@ -370,9 +699,9 @@ export default function ControlPage() {
 
   const fetchPending = useCallback(async () => {
     setLoadingPending(true);
-    const { data, error } = await supabase
+       const { data, error } = await supabase
       .from("block_requests")
-      .select("*, segments(name)")
+      .select("*, segments(name), block_plan_options(*)")
       .eq("status", "scored" as BlockRequestStatus)
       .order("priority_score", { ascending: false, nullsFirst: false });
     if (error) {
@@ -404,6 +733,24 @@ export default function ControlPage() {
     setLoadingApprovals(false);
   }, [supabase, user]);
 
+  const fetchVerifyLogs = useCallback(async () => {
+    setLoadingVerify(true);
+    const { data, error } = await supabase
+      .from("execution_logs")
+      .select(
+        "*, block_requests(work_description, work_type, requested_duration_mins, segments(name))",
+      )
+      .eq("status", "completed")
+      .order("actual_start", { ascending: false });
+    if (error) {
+      toast.error("Failed to load field work", { description: error.message });
+      setVerifyLogs([]);
+    } else {
+      setVerifyLogs((data as VerifyLogRow[]) ?? []);
+    }
+    setLoadingVerify(false);
+  }, [supabase]);
+
   useEffect(() => {
     const loadUser = async () => {
       const { data } = await supabase.auth.getUser();
@@ -415,16 +762,27 @@ export default function ControlPage() {
   useEffect(() => {
     fetchTimetable();
     fetchPending();
+    fetchVerifyLogs();
     const id = setInterval(() => {
       fetchTimetable();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [fetchTimetable, fetchPending]);
+  }, [fetchTimetable, fetchPending, fetchVerifyLogs]);
 
   useEffect(() => {
     if (user) fetchApprovals();
     else setApprovals([]);
   }, [user, fetchApprovals]);
+
+  useEffect(() => {
+    const initial: Record<string, string> = {};
+    pending.forEach((br) => {
+      const rec = br.block_plan_options?.find((o) => o.is_recommended);
+      if (rec) initial[br.id] = rec.id;
+      else if (br.block_plan_options?.[0]) initial[br.id] = br.block_plan_options[0].id;
+    });
+    setSelectedOptions(initial);
+  }, [pending]);
 
   const approvedCount = approvals.filter(
     (a) => a.decision === "approved" || a.decision === "modified",
@@ -463,12 +821,22 @@ export default function ControlPage() {
     }
   }
 
-  async function handleApprove(br: BlockRequestRow) {
+  function getSelectedOption(br: BlockRequestRow): BlockPlanOption | undefined {
+    const selId = selectedOptions[br.id];
+    return br.block_plan_options?.find((o) => o.id === selId);
+  }
+
+  async function handleApproveSelected(br: BlockRequestRow) {
+    const opt = getSelectedOption(br);
+    const start = opt ? opt.adjusted_start : br.requested_start;
+    const duration = opt ? opt.adjusted_duration_mins : br.requested_duration_mins;
     setActingId(br.id);
     const { error } = await supabase.from("approvals").insert({
       block_request_id: br.id,
       officer_id: user?.id ?? null,
       decision: "approved" as ApprovalDecision,
+      modified_start: new Date(start).toISOString(),
+      modified_duration_mins: duration,
       decided_at: new Date().toISOString(),
     });
     if (error) {
@@ -478,7 +846,11 @@ export default function ControlPage() {
     }
     const { error: updErr } = await supabase
       .from("block_requests")
-      .update({ status: "approved" as BlockRequestStatus })
+      .update({
+        status: "approved" as BlockRequestStatus,
+        requested_start: new Date(start).toISOString(),
+        requested_duration_mins: duration,
+      })
       .eq("id", br.id);
     if (updErr) {
       toast.error("Failed to update block request", {
@@ -488,16 +860,43 @@ export default function ControlPage() {
       return;
     }
     toast.success("Request approved", {
-      description: `Block request #${br.id.slice(0, 8)} approved.`,
+      description: `Block request #${br.id.slice(0, 8)} approved with selected plan.`,
     });
     setPending((prev) => prev.filter((r) => r.id !== br.id));
+    setSelectedOptions((prev) => {
+      const next = { ...prev };
+      delete next[br.id];
+      return next;
+    });
     fetchApprovals();
+  }
+
+  async function handleMarkVerified(log: VerifyLogRow) {
+    if (!user) return;
+    setActingId(log.id);
+    const { error } = await supabase
+      .from("execution_logs")
+      .update({ verified: true })
+      .eq("id", log.id);
+    if (error) {
+      toast.error("Failed to mark verified", { description: error.message });
+      setActingId(null);
+      return;
+    }
+    toast.success("Field work marked as verified");
+    setVerifyLogs((prev) =>
+      prev.map((l) => (l.id === log.id ? { ...l, verified: true } : l)),
+    );
+    setActingId(null);
   }
 
   function openModify(br: BlockRequestRow) {
     setModifyTarget(br);
-    setModifyStart(fmtDateTimeLocal(br.requested_start));
-    setModifyDuration(String(br.requested_duration_mins));
+    const opt = getSelectedOption(br);
+    const start = opt ? opt.adjusted_start : br.requested_start;
+    const duration = opt ? opt.adjusted_duration_mins : br.requested_duration_mins;
+    setModifyStart(fmtDateTimeLocal(start));
+    setModifyDuration(String(duration));
     setModifyOpen(true);
   }
 
@@ -578,10 +977,13 @@ export default function ControlPage() {
         </Button>
       </div>
 
+      <LiveTrackMap />
+
       <Tabs defaultValue="timetable" className="space-y-4">
         <TabsList>
           <TabsTrigger value="timetable">Timetable</TabsTrigger>
           <TabsTrigger value="pending">Pending Plans</TabsTrigger>
+          <TabsTrigger value="verify">Verify Field Work</TabsTrigger>
         </TabsList>
 
         <TabsContent value="timetable" className="space-y-3">
@@ -606,6 +1008,15 @@ export default function ControlPage() {
               </span>
             </div>
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Live Corridor View</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <LiveTrackMap />
+            </CardContent>
+          </Card>
 
           <div className="rounded-md border">
             <Table>
@@ -657,108 +1068,371 @@ export default function ControlPage() {
           <h2 className="text-sm font-semibold">
             AI-Scored Block Requests ({pending.length} pending)
           </h2>
-          <div className="rounded-md border">
-              <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Segment</TableHead>
-                  <TableHead>Start</TableHead>
-                  <TableHead className="text-right">Duration</TableHead>
-                  <TableHead className="text-right">Priority</TableHead>
-                  <TableHead>Delay Risk</TableHead>
-                  <TableHead>AI Explanation</TableHead>
-                  <TableHead className="text-center">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loadingPending ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-12" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-5 w-10" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-14" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-full" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-8 w-20" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : pending.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={7}
-                      className="py-8 text-center text-sm text-muted-foreground"
+          {loadingPending ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <Card key={i}>
+                <CardHeader>
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-3">
+                    <Skeleton className="h-24 w-full" />
+                    <Skeleton className="h-24 w-full" />
+                    <Skeleton className="h-24 w-full" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : pending.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                All scored requests have been handled. Nothing pending.
+              </CardContent>
+            </Card>
+          ) : (
+            pending.map((br) => {
+              const options = br.block_plan_options ?? [];
+              const reqRiskKey = delayRiskKey(br.delay_risk);
+              const reqRiskInfo = DELAY_RISK_BADGE[reqRiskKey];
+              return (
+                <Card key={br.id}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="text-lg">
+                          {br.segments?.name ?? `ID ${br.id.slice(0, 8)}`}
+                        </CardTitle>
+                        <CardDescription>
+                          {fmtDateTime(br.requested_start)} ·{" "}
+                          {fmtDuration(br.requested_duration_mins)}
+                        </CardDescription>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant={priorityBadge(br.priority_score)}
+                          className="capitalize"
+                        >
+                          {priorityLabel(br.priority_score)} Priority
+                        </Badge>
+                        <Badge
+                          variant={reqRiskInfo.variant}
+                          className="capitalize"
+                        >
+                          {delayRiskLabel(reqRiskInfo.label)}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
+                      <Sparkles className="mt-0.5 h-4 w-4 text-primary/70 shrink-0" />
+                      {br.ai_explanation ?? "No explanation provided."}
+                    </div>
+                    {options.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No plan options available for this request.
+                      </p>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {options.map((opt) => {
+                          const optRiskKey = delayRiskKey(opt.delay_risk);
+                          const optRiskInfo = DELAY_RISK_BADGE[optRiskKey];
+                          const isRecommended = !!opt.is_recommended;
+                          const isSelected = selectedOptions[br.id] === opt.id;
+                          return (
+                            <label
+                              key={opt.id}
+                              className={cn(
+                                "relative block cursor-pointer rounded-xl border-2 p-3 transition-all",
+                                isSelected
+                                  ? isRecommended
+                                    ? "border-[#960DF2]"
+                                    : "border-primary"
+                                  : "border-muted hover:border-muted-foreground/50",
+                              )}
+                            >
+                              <input
+                                type="radio"
+                                name={`plan-${br.id}`}
+                                value={opt.id}
+                                checked={isSelected}
+                                onChange={() =>
+                                  setSelectedOptions((prev) => ({
+                                    ...prev,
+                                    [br.id]: opt.id,
+                                  }))
+                                }
+                                className="sr-only"
+                              />
+                              {isRecommended && (
+                                <Badge className="absolute -top-1.5 left-2 bg-[#960DF2] text-white text-[10px]">
+                                  AI Recommended
+                                </Badge>
+                              )}
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">
+                                  {fmtDateTime(opt.adjusted_start)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {fmtDuration(opt.adjusted_duration_mins)}
+                                </span>
+                              </div>
+                              <div className="mt-2 space-y-1.5 text-sm">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-muted-foreground">
+                                    Priority Score
+                                  </span>
+                                  <span className="font-medium">
+                                    {opt.priority_score ?? "—"}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-muted-foreground">
+                                    Delay Risk
+                                  </span>
+                                  <Badge
+                                    variant={optRiskInfo.variant}
+                                    className="capitalize"
+                                  >
+                                    {delayRiskLabel(optRiskInfo.label)}
+                                  </Badge>
+                                </div>
+                                <p className="pt-1 text-xs text-muted-foreground">
+                                  {opt.explanation ?? "No explanation provided."}
+                                </p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                  <CardFooter className="flex justify-end gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openModify(br)}
+                      disabled={!user}
                     >
-                      All scored requests have been handled. Nothing pending.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  pending.map((br) => {
-                    const riskKey = delayRiskKey(br.delay_risk);
-                    const riskInfo = DELAY_RISK_BADGE[riskKey];
-                    return (
-                    <TableRow key={br.id} className={DELAY_RISK_ROW_CLASS[riskKey]}>
-                      <TableCell className={DELAY_RISK_BORDER[riskKey]}>
-                        {br.segments?.name ?? `ID ${br.id.slice(0, 8)}`}
-                      </TableCell>
-                      <TableCell>{fmtDateTime(br.requested_start)}</TableCell>
-                      <TableCell className="text-right">{fmtDuration(br.requested_duration_mins)}</TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant={priorityBadge(br.priority_score)} className="capitalize">
-                          {priorityLabel(br.priority_score)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={riskInfo.variant} className="capitalize">
-                          {delayRiskLabel(riskInfo.label)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-xs">
-                        <div className="flex items-start gap-1.5">
-                          <Sparkles className="mt-0.5 h-4 w-4 text-primary/70 shrink-0" />
-                          {br.ai_explanation ?? "No explanation provided."}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                           <Button
-                             size="sm"
-                             variant="default"
-                             className="bg-success text-success-foreground hover:bg-success/90"
-                             onClick={() => {
-                               setApproveTarget(br);
-                               setConfirmApproveOpen(true);
-                             }}
-                             disabled={actingId === br.id || !user}
-                           >
-                            {actingId === br.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Check className="h-3 w-3" />
-                            )}
-                            Approve
-                          </Button>
-                           <Button
-                             size="sm"
-                             variant="outline"
-                             onClick={() => {
-                               setModifyConfirmTarget(br);
-                               setConfirmModifyOpen(true);
-                             }}
-                             disabled={!user}
-                           >
-                            <Edit className="h-3 w-3" />
-                            Modify
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-              </Table>
+                      <Edit className="h-3 w-3" />
+                      Modify
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-success text-success-foreground hover:bg-success/90"
+                      onClick={() => {
+                        setApproveTarget(br);
+                        setConfirmApproveOpen(true);
+                      }}
+                      disabled={actingId === br.id || !user}
+                    >
+                      {actingId === br.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Check className="h-3 w-3" />
+                      )}
+                      Approve Selected Plan
+                    </Button>
+                  </CardFooter>
+                </Card>
+              );
+            })
+          )}
+        </TabsContent>
+
+        <TabsContent value="verify" className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">
+              Completed Field Work — awaiting verification (
+              {verifyLogs.length})
+            </h2>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={fetchVerifyLogs}
+              disabled={loadingVerify}
+            >
+              {loadingVerify ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Refresh
+            </Button>
           </div>
+
+          {loadingVerify ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}>
+                <CardHeader>
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Skeleton className="h-32 w-full" />
+                    <Skeleton className="h-32 w-full" />
+                  </div>
+                  <Skeleton className="h-4 w-5/6" />
+                  <Skeleton className="h-4 w-2/3" />
+                </CardContent>
+                <CardFooter className="flex justify-end">
+                  <Skeleton className="h-8 w-28" />
+                </CardFooter>
+              </Card>
+            ))
+          ) : verifyLogs.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                No completed field work is currently awaiting verification.
+              </CardContent>
+            </Card>
+          ) : (
+            verifyLogs.map((log) => {
+              const req = log.block_requests ?? null;
+              const segmentName = req?.segments?.name ?? "—";
+              const wt = req?.work_type ?? ("—" as BlockRequestWorkType);
+              const varianceMins = computeVarianceMins(log);
+              const actualMins =
+                log.actual_start && log.actual_end
+                  ? Math.round(
+                      (new Date(log.actual_end).getTime() -
+                        new Date(log.actual_start).getTime()) /
+                        60000,
+                    )
+                  : null;
+              const verified = !!log.verified;
+              const isActing = actingId === log.id;
+              return (
+                <Card key={log.id}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="text-lg">
+                          {segmentName}
+                        </CardTitle>
+                        <CardDescription>
+                          {workTypeLabel(wt)} ·{" "}
+                          {log.actual_start
+                            ? fmtDateTime(log.actual_start)
+                            : "—"}
+                        </CardDescription>
+                        {req?.work_description ? (
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {req.work_description}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Badge variant={verified ? "default" : "secondary"}>
+                        {verified ? "Verified" : "Pending verification"}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5 text-center">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Before
+                        </span>
+                        {log.before_image_url ? (
+                          <img
+                            src={log.before_image_url}
+                            alt="Before"
+                            className="h-36 w-full rounded-md border object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-36 w-full items-center justify-center rounded-md border text-xs text-muted-foreground">
+                            No before image
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-1.5 text-center">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          After
+                        </span>
+                        {log.after_image_url ? (
+                          <img
+                            src={log.after_image_url}
+                            alt="After"
+                            className="h-36 w-full rounded-md border object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-36 w-full items-center justify-center rounded-md border text-xs text-muted-foreground">
+                            No after image
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                      <div className="flex flex-col">
+                        <span className="text-xs text-muted-foreground">
+                          Actual Start
+                        </span>
+                        <span>{log.actual_start ? fmtDateTime(log.actual_start) : "—"}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-muted-foreground">
+                          Actual End
+                        </span>
+                        <span>{log.actual_end ? fmtDateTime(log.actual_end) : "—"}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-muted-foreground">
+                          Actual Duration
+                        </span>
+                        <span>
+                          {actualMins != null ? fmtDuration(actualMins) : "—"}
+                        </span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-muted-foreground">
+                          Variance vs planned
+                        </span>
+                        <span
+                          className={
+                            varianceMins != null && varianceMins > 0
+                              ? "text-destructive"
+                              : "text-success"
+                          }
+                        >
+                          {varianceMins != null
+                            ? fmtVarianceMins(varianceMins)
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex justify-end">
+                    {verified ? (
+                      <Button size="sm" variant="ghost" disabled>
+                        <Check className="h-4 w-4 text-success" />
+                        <span className="ml-1">Verified</span>
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="bg-success text-success-foreground hover:bg-success/90"
+                        onClick={() => handleMarkVerified(log)}
+                        disabled={isActing || !user}
+                      >
+                        {isActing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4" />
+                        )}
+                        <span className="ml-1">
+                          {isActing ? "Marking…" : "Mark Verified"}
+                        </span>
+                      </Button>
+                    )}
+                  </CardFooter>
+                </Card>
+              );
+            })
+          )}
         </TabsContent>
       </Tabs>
 
@@ -776,53 +1450,58 @@ export default function ControlPage() {
         />
       )}
 
-      <Dialog open={modifyOpen} onOpenChange={setModifyOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Modify Block Request</DialogTitle>
-            <DialogDescription>
-              Adjust the proposed start time and duration. Saving records a
-              "modified" approval with the new values.
-            </DialogDescription>
-          </DialogHeader>
-          {modifyTarget && (
-            <div className="space-y-4 py-2 text-sm">
-              <div className="grid grid-cols-2 gap-2">
-                <span className="text-muted-foreground">Segment</span>
-                <span>{modifyTarget.segments?.name ?? "—"}</span>
-                <span className="text-muted-foreground">Priority</span>
-                <span>{priorityLabel(modifyTarget.priority_score)}</span>
-                <span className="text-muted-foreground">Original start</span>
-                <span>{fmtDateTime(modifyTarget.requested_start)}</span>
-                <span className="text-muted-foreground">Original duration</span>
-                <span>{modifyTarget.requested_duration_mins} min</span>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium leading-none" htmlFor="modify-start">
-                  New start time
-                </label>
-                <Input
-                  id="modify-start"
-                  type="datetime-local"
-                  value={modifyStart}
-                  onChange={(e) => setModifyStart(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium leading-none" htmlFor="modify-duration">
-                  New duration (minutes)
-                </label>
-                <Input
-                  id="modify-duration"
-                  type="number"
-                  min={1}
-                  value={modifyDuration}
-                  onChange={(e) => setModifyDuration(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
+        <Dialog open={modifyOpen} onOpenChange={setModifyOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Modify Block Request</DialogTitle>
+              <DialogDescription>
+                Further override the selected plan option's start time and
+                duration. Saving records a "modified" approval with the new
+                values and sets the request to approved.
+              </DialogDescription>
+            </DialogHeader>
+            {modifyTarget && (() => {
+              const modOpt = getSelectedOption(modifyTarget);
+              const baseStart = modOpt ? modOpt.adjusted_start : modifyTarget.requested_start;
+              const baseDuration = modOpt ? modOpt.adjusted_duration_mins : modifyTarget.requested_duration_mins;
+              return (
+                <div className="space-y-4 py-2 text-sm">
+                  <div className="grid grid-cols-2 gap-2">
+                    <span className="text-muted-foreground">Segment</span>
+                    <span>{modifyTarget.segments?.name ?? "—"}</span>
+                    <span className="text-muted-foreground">Priority</span>
+                    <span>{priorityLabel(modifyTarget.priority_score)}</span>
+                    <span className="text-muted-foreground">Selected start</span>
+                    <span>{fmtDateTime(baseStart)}</span>
+                    <span className="text-muted-foreground">Selected duration</span>
+                    <span>{baseDuration} min</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium leading-none" htmlFor="modify-start">
+                      New start time
+                    </label>
+                    <Input
+                      id="modify-start"
+                      type="datetime-local"
+                      value={modifyStart}
+                      onChange={(e) => setModifyStart(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium leading-none" htmlFor="modify-duration">
+                      New duration (minutes)
+                    </label>
+                    <Input
+                      id="modify-duration"
+                      type="number"
+                      min={1}
+                      value={modifyDuration}
+                      onChange={(e) => setModifyDuration(e.target.value)}
+                    />
+                  </div>
+                </div>
+              );})()}
+            <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={submitting}>
                 Cancel
@@ -853,8 +1532,9 @@ export default function ControlPage() {
                 ? ` on Segment ${approveTarget.segments.name}`
                 : ""}?
               <br />
-              This action will record an approved decision and mark the
-              request as approved.
+              This will approve the <strong>selected</strong> plan option and
+              record an approved decision. The request's start time and duration
+              will be updated to match the chosen option.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -867,7 +1547,7 @@ export default function ControlPage() {
               variant="default"
               className="bg-success text-success-foreground hover:bg-success/90"
               onClick={() => {
-                if (approveTarget) handleApprove(approveTarget);
+                if (approveTarget) handleApproveSelected(approveTarget);
                 setConfirmApproveOpen(false);
               }}
               disabled={actingId != null}
