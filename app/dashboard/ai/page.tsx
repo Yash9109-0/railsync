@@ -76,7 +76,7 @@ function safetyBadge(criticality: string | null | undefined) {
 function formatDateTime(value: string) {
   const parsed = Date.parse(value)
   if (Number.isNaN(parsed)) return value
-  return new Date(parsed).toLocaleString([], {
+  return new Date(parsed).toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   })
@@ -94,7 +94,7 @@ export default function AiPage() {
     const { data: reqData, error: reqError } = await supabase
       .from("block_requests")
       .select("*")
-      .in("status", ["scored", "safety_blocked"])
+      .in("status", ["submitted", "scored", "safety_blocked"])  
       .order("created_at", { ascending: false })
 
     if (reqError) {
@@ -141,7 +141,7 @@ export default function AiPage() {
       const res = await fetch("/api/auto-process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ block_request_id: id }),
+        body: JSON.stringify({ requestId: id, block_request_id: id }),
       })
       const json = await res.json()
       if (!res.ok || json.error) {
@@ -179,7 +179,7 @@ export default function AiPage() {
         )}
       </div>
       <div className="text-sm text-muted-foreground">
-        {formatDateTime(opt.adjusted_start)} · {opt.adjusted_duration_mins} min
+        <span suppressHydrationWarning>{formatDateTime(opt.adjusted_start)}</span> · {opt.adjusted_duration_mins} min
       </div>
       <div className="flex items-center gap-2">
         <span className="text-lg font-bold text-primary">
@@ -236,7 +236,7 @@ export default function AiPage() {
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Requested start: {formatDateTime(row.requested_start)} · {row.requested_duration_mins} min
+               Requested start: <span suppressHydrationWarning>{formatDateTime(row.requested_start)}</span> · {row.requested_duration_mins} min
               </p>
             </div>
             {variant === "scored" && (
