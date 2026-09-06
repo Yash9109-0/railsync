@@ -1,893 +1,141 @@
-"use client"
+'use client'
+import { useEffect, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { toast } from 'sonner'
 
-import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { toast } from "sonner"
-import {
-  ClipboardList,
-  Loader2,
-  MapPin,
-  Send,
-} from "lucide-react"
-import type {
-  BlockRequest,
-  ExecutionLog,
-  Segment,
-  Station,
-} from "@/lib/types"
-import { Progress } from "@/components/ui/progress"
-import dynamic from "next/dynamic"
-
-const MapPreview = dynamic(() => import("@/components/MapPreview"), {
-  ssr: false,
-})
-
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  approved: {
-    label: "Approved",
-    className:
-      "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  },
-  executed: {
-    label: "Executed",
-    className:
-      "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  },
-}
-
-const workTypeLabels: Record<string, string> = {
-  track: "Track",
-  signal: "Signal",
-  electrical: "Electrical",
-  other: "Other",
-}
-
-const safetyLabels: Record<string, string> = {
-  routine: "Routine",
-  urgent: "Urgent",
-  safety_critical: "Safety Critical",
-}
-
-function toDateTimeLocal(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-function formatDateTime(dateString: string): string {
-  try {
-    return new Date(dateString).toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  } catch {
-    return dateString
-  }
-}
-
-function formatDuration(mins: number): string {
-  if (mins >= 60) {
-    const h = Math.floor(mins / 60)
-    const m = mins % 60
-    return `${h}h ${m}m`
-  }
-  return `${mins} min`
-}
-
-function getStatusBadge(status: string) {
-  return (
-    STATUS_CONFIG[status] ?? {
-      label: status.charAt(0).toUpperCase() + status.slice(1),
-      className:
-        "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-    }
-  )
-}
-
-function getSegmentName(
-  id: number | null | undefined,
-  segments: Segment[],
-  stations: Station[],
-): string {
-  if (id == null) return "—"
-  const seg = segments.find((s) => s.id === id)
-  if (!seg) return String(id)
-  const from = stations.find((s) => s.id === seg.from_station_id)
-  const to = stations.find((s) => s.id === seg.to_station_id)
-  return `${from?.name ?? seg.from_station_id} → ${to?.name ?? seg.to_station_id}`
-}
-
-function formatVariance(mins: number): string {
-  if (mins === 0) return "0 min (on time)"
-  const sign = mins > 0 ? "+" : ""
-  return `${sign}${mins} min ${mins > 0 ? "over" : "under"}`
-}
-
-interface LogExecutionDialogProps {
-  request: BlockRequest
-  segmentName: string
-  workTypeLabel: string
-  safetyLabel: string
-  onLogged: () => void
-}
-
-function LogExecutionDialog({
-  request,
-  segmentName,
-  workTypeLabel,
-  safetyLabel,
-       onLogged,
-}: LogExecutionDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [beforeImage, setBeforeImage] = useState<File | null>(null)
-  const [afterImage, setAfterImage] = useState<File | null>(null)
-  const [uploadProgress, setUploadProgress] = useState<{
-    before: number | null
-    after: number | null
-  }>({ before: null, after: null })
-  const [actualStart, setActualStart] = useState<string>(
-    () =>
-      request.requested_start
-        ? toDateTimeLocal(new Date(request.requested_start))
-        : toDateTimeLocal(new Date()),
-  )
-  const [actualEnd, setActualEnd] = useState<string>(() => {
-    const start = request.requested_start
-      ? new Date(request.requested_start)
-      : new Date()
-    start.setMinutes(start.getMinutes() + request.requested_duration_mins)
-    return toDateTimeLocal(start)
-  })
-  const [geoLat, setGeoLat] = useState<string>("")
-  const [geoLng, setGeoLng] = useState<string>("")
-  const [locating, setLocating] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-
-  const uploadImage = async (
-    file: File,
-    onProgress: (pct: number) => void,
-  ): Promise<string | null> => {
-    const supabase = createClient()
-    const fileName = `${request.id}_${Date.now()}_${file.name}`
-    const { error } = await supabase.storage
-      .from("execution-images")
-      .upload(fileName, file, {
-        upsert: false,
-        onUploadProgress: (event: { loaded: number; total: number }) => {
-          if (event.total > 0) {
-            onProgress(Math.round((event.loaded / event.total) * 100))
-          }
-        },
-      } as any)
-
-    if (error) {
-      console.error("Upload error:", error)
-      onProgress(0)
-      return null
-    }
-
-    const { data: publicUrlData } = supabase.storage
-      .from("execution-images")
-      .getPublicUrl(fileName)
-
-    return publicUrlData?.publicUrl ?? null
-  }
-
-  const handleUseMyLocation = () => {
-    if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser")
-      return
-    }
-
-    setLocating(true)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGeoLat(String(pos.coords.latitude))
-        setGeoLng(String(pos.coords.longitude))
-        setLocating(false)
-        toast.success("Location captured")
-      },
-      (err) => {
-        setLocating(false)
-        if (err.code === err.PERMISSION_DENIED) {
-          toast.error("Location permission denied. Enter coordinates manually.")
-        } else {
-          toast.error("Could not get location. Enter coordinates manually.")
-        }
-      },
-      { enableHighAccuracy: true, timeout: 10000 },
-    )
-  }
-
-  const handleSubmit = async () => {
-    if (!beforeImage || !afterImage) {
-      toast.error("Both before and after images are required")
-      return
-    }
-
-    if (!actualStart || !actualEnd) {
-      toast.error("Please provide actual start and end times")
-      return
-    }
-
-    const start = new Date(`${actualStart}:00`)
-    const end = new Date(`${actualEnd}:00`)
-
-    if (end <= start) {
-      toast.error("Actual end must be after actual start")
-      return
-    }
-
-    setSubmitting(true)
-    setUploadProgress({ before: null, after: null })
-
-    try {
-      const beforeUrl = await uploadImage(beforeImage, (pct) =>
-        setUploadProgress((p) => ({ ...p, before: pct })),
-      )
-      const afterUrl = await uploadImage(afterImage, (pct) =>
-        setUploadProgress((p) => ({ ...p, after: pct })),
-      )
-
-      if (!beforeUrl || !afterUrl) {
-        throw new Error("Failed to upload one or both images")
-      }
-      setUploadProgress({ before: null, after: null })
-
-      const supabase = createClient()
-
-      const { error: logError } = await supabase.from("execution_logs").insert({
-        block_request_id: request.id,
-        before_image_url: beforeUrl,
-        after_image_url: afterUrl,
-        actual_start: start.toISOString(),
-        actual_end: end.toISOString(),
-        geo_lat: geoLat ? Number(geoLat) : null,
-        geo_lng: geoLng ? Number(geoLng) : null,
-        status: "completed",
-      })
-
-      if (logError) throw logError
-
-      const { error: updateError } = await supabase
-        .from("block_requests")
-        .update({ status: "executed" })
-        .eq("id", request.id)
-
-      if (updateError) throw updateError
-
-      toast.success("Execution logged successfully")
-      onLogged()
-      setOpen(false)
-    } catch (err) {
-      toast.error(
-        `Failed to log execution: ${err instanceof Error ? err.message : String(err)}`,
-      )
-    } finally {
-      setSubmitting(false)
-      setUploadProgress({ before: null, after: null })
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
-          Log Execution
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Log Execution</DialogTitle>
-          <DialogDescription>
-            <div className="space-y-1">
-              <div>
-                <span className="font-medium">{segmentName}</span>
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {workTypeLabel} work &middot; {safetyLabel} &middot; Requested
-                start: {formatDateTime(request.requested_start)}
-              </div>
-            </div>
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-          <div className="space-y-2">
-            <label
-              htmlFor="before-image"
-              className="text-sm font-medium leading-none"
-            >
-              Before Image
-            </label>
-            <Input
-              id="before-image"
-              type="file"
-              accept="image/*"
-              onChange={(e) => setBeforeImage(e.target.files?.[0] ?? null)}
-            />
-            {uploadProgress.before != null && (
-              <div className="space-y-1 pt-1">
-                <Progress value={uploadProgress.before} className="h-2" />
-                <span className="text-xs text-muted-foreground">
-                  Uploading before image: {uploadProgress.before}%
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="after-image"
-              className="text-sm font-medium leading-none"
-            >
-              After Image
-            </label>
-            <Input
-              id="after-image"
-              type="file"
-              accept="image/*"
-              onChange={(e) => setAfterImage(e.target.files?.[0] ?? null)}
-            />
-            {uploadProgress.after != null && (
-              <div className="space-y-1 pt-1">
-                <Progress value={uploadProgress.after} className="h-2" />
-                <span className="text-xs text-muted-foreground">
-                  Uploading after image: {uploadProgress.after}%
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="actual-start"
-              className="text-sm font-medium leading-none"
-            >
-              Actual Start
-            </label>
-            <Input
-              id="actual-start"
-              type="datetime-local"
-              value={actualStart}
-              onChange={(e) => setActualStart(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="actual-end"
-              className="text-sm font-medium leading-none"
-            >
-              Actual End
-            </label>
-            <Input
-              id="actual-end"
-              type="datetime-local"
-              value={actualEnd}
-              onChange={(e) => setActualEnd(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2 md:col-span-2">
-            <label className="text-sm font-medium leading-none">
-              Location
-            </label>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleUseMyLocation}
-                disabled={locating}
-              >
-                {locating ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <MapPin className="h-4 w-4 mr-2" />
-                )}
-                {locating ? "Locating..." : "Use My Location"}
-              </Button>
-              <span className="text-xs text-muted-foreground self-center">
-                (auto-fills lat/lng below)
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              <div className="space-y-1">
-                <label
-                  htmlFor="geo-lat"
-                  className="text-xs text-muted-foreground"
-                >
-                  Latitude
-                </label>
-                <Input
-                  id="geo-lat"
-                  type="number"
-                  step="any"
-                  placeholder="e.g. 40.7128"
-                  value={geoLat}
-                  onChange={(e) => setGeoLat(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="geo-lng"
-                  className="text-xs text-muted-foreground"
-                >
-                  Longitude
-                </label>
-                <Input
-                  id="geo-lng"
-                  type="number"
-                  step="any"
-                  placeholder="e.g. -74.0060"
-                  value={geoLng}
-                  onChange={(e) => setGeoLng(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {(geoLat && geoLng) || submitting ? (
-              <div className="space-y-1 mt-2">
-                <MapPreview
-                  lat={geoLat ? Number(geoLat) : null}
-                  lng={geoLng ? Number(geoLng) : null}
-                  className="h-40 w-full"
-                />
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline" disabled={submitting}>
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4 mr-2" />
-                Save Execution Log
-              </>
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-interface PendingTableProps {
-  requests: BlockRequest[]
-  segments: Segment[]
-  stations: Station[]
-  loading: boolean
-  onLogged: () => void
-}
-
-function PendingTable({
-  requests,
-  segments,
-  stations,
-  loading,
-  onLogged,
-}: PendingTableProps) {
-  if (loading) {
-    return (
-      <div className="space-y-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-12 w-full" />
-        ))}
-      </div>
-    )
-  }
-
-  if (requests.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <ClipboardList className="h-12 w-12 text-muted-foreground/50 mb-4" />
-        <h3 className="text-lg font-medium">No approved requests</h3>
-        <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-          Approved block requests will appear here for execution logging.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Segment</TableHead>
-            <TableHead>Work Type</TableHead>
-            <TableHead>Requested Start</TableHead>
-            <TableHead>Duration</TableHead>
-            <TableHead>Safety</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {requests.map((request, index) => {
-            const segmentName = getSegmentName(
-              request.segment_id,
-              segments,
-              stations,
-            )
-            const workTypeLabel =
-              workTypeLabels[request.work_type] ?? request.work_type
-            const safetyLabel =
-              safetyLabels[request.safety_criticality] ??
-              request.safety_criticality
-            const badge = getStatusBadge(request.status)
-            return (
-              <TableRow
-                key={request.id}
-                className="animate-fade-in"
-                style={{ animationDelay: `${Math.min(index * 40, 400)}ms` }}
-              >
-                <TableCell>{segmentName}</TableCell>
-                <TableCell>{workTypeLabel}</TableCell>
-                <TableCell>
-                  {formatDateTime(request.requested_start)}
-                </TableCell>
-                <TableCell>
-                  {formatDuration(request.requested_duration_mins)}
-                </TableCell>
-                <TableCell>{safetyLabel}</TableCell>
-                <TableCell>
-                  <Badge className={badge.className}>{badge.label}</Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <LogExecutionDialog
-                    request={request}
-                    segmentName={segmentName}
-                    workTypeLabel={workTypeLabel}
-                    safetyLabel={safetyLabel}
-                    onLogged={onLogged}
-                  />
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-    </div>
-  )
-}
-
-interface CompletedTableProps {
-  logs: ExecutionLog[]
-  requests: BlockRequest[]
-  segments: Segment[]
-  stations: Station[]
-  loading: boolean
-}
-
-function CompletedTable({
-  logs,
-  requests,
-  segments,
-  stations,
-  loading,
-}: CompletedTableProps) {
-  const reqById = new Map(requests.map((r) => [r.id, r]))
-
-  if (loading) {
-    return (
-      <div className="space-y-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-12 w-full" />
-        ))}
-      </div>
-    )
-  }
-
-  if (logs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <ClipboardList className="h-12 w-12 text-muted-foreground/50 mb-4" />
-        <h3 className="text-lg font-medium">No completed work yet</h3>
-        <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-          Executed block requests will be listed here once logged.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Segment</TableHead>
-            <TableHead>Requested Start</TableHead>
-            <TableHead>Actual Start</TableHead>
-            <TableHead>Actual End</TableHead>
-            <TableHead>Duration</TableHead>
-            <TableHead>Variance</TableHead>
-            <TableHead>Images</TableHead>
-            <TableHead>Location</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {logs.map((log) => {
-            const request = reqById.get(log.block_request_id ?? "")
-            const segmentName =
-              request != null
-                ? getSegmentName(request.segment_id, segments, stations)
-                : "—"
-
-            let varianceMins: number | null = null
-            if (
-              log.actual_start != null &&
-              log.actual_end != null &&
-              request != null
-            ) {
-              const actualMs =
-                new Date(log.actual_end).getTime() -
-                new Date(log.actual_start).getTime()
-              const actualMins = Math.round(actualMs / 60000)
-              varianceMins = actualMins - request.requested_duration_mins
-            }
-
-            const varianceLabel =
-              varianceMins != null ? formatVariance(varianceMins) : "—"
-            const varianceColor =
-              varianceMins != null && varianceMins > 0
-                ? "text-destructive"
-                : "text-success"
-
-            return (
-              <TableRow key={log.id}>
-                <TableCell>{segmentName}</TableCell>
-                <TableCell>
-                  {request != null
-                    ? formatDateTime(request.requested_start)
-                    : "—"}
-                </TableCell>
-                <TableCell>
-                  {log.actual_start != null
-                    ? formatDateTime(log.actual_start)
-                    : "—"}
-                </TableCell>
-                <TableCell>
-                  {log.actual_end != null
-                    ? formatDateTime(log.actual_end)
-                    : "—"}
-                </TableCell>
-                <TableCell>
-                  {varianceMins != null
-                    ? formatDuration(
-                        Math.round(
-                          (new Date(log.actual_end!).getTime() -
-                            new Date(log.actual_start!).getTime()) /
-                            60000,
-                        ),
-                      )
-                    : "—"}
-                </TableCell>
-                <TableCell className={varianceColor}>
-                  {varianceLabel}
-                </TableCell>
-                <TableCell>
-                  {log.before_image_url != null ||
-                  log.after_image_url != null ? (
-                    <div className="flex gap-1">
-                      {log.before_image_url != null && (
-                        <img
-                          src={log.before_image_url}
-                          alt="Before"
-                          className="h-10 w-10 object-cover rounded border"
-                        />
-                      )}
-                      {log.after_image_url != null && (
-                        <img
-                          src={log.after_image_url}
-                          alt="After"
-                          className="h-10 w-10 object-cover rounded border"
-                        />
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">
-                      No images
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {log.geo_lat != null && log.geo_lng != null ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs">
-                        {log.geo_lat.toFixed(4)}, {log.geo_lng.toFixed(4)}
-                      </span>
-                      <MapPreview
-                        lat={log.geo_lat}
-                        lng={log.geo_lng}
-                        className="h-12 w-12 rounded"
-                      />
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">
-                      Not captured
-                    </span>
-                  )}
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-    </div>
-  )
-}
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export default function FieldPage() {
-  const [approvedRequests, setApprovedRequests] = useState<BlockRequest[]>([])
-  const [executedRequests, setExecutedRequests] = useState<BlockRequest[]>([])
-  const [logs, setLogs] = useState<ExecutionLog[]>([])
-  const [segments, setSegments] = useState<Segment[]>([])
-  const [stations, setStations] = useState<Station[]>([])
-  const [loading, setLoading] = useState(true)
+  const [approved, setApproved] = useState<any[]>([])
+  const [inProgress, setInProgress] = useState<any[]>([])
+  const [completed, setCompleted] = useState<any[]>([])
+  const [logsMap, setLogsMap] = useState<Record<string, any>>({})
+  const [selected, setSelected] = useState<any>(null)
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [beforeFile, setBeforeFile] = useState<File | null>(null)
+  const [afterFile, setAfterFile] = useState<File | null>(null)
+  const [actualEnd, setActualEnd] = useState('')
+  const [lat, setLat] = useState('')
+  const [lng, setLng] = useState('')
 
-  const fetchPending = async () => {
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from("block_requests")
-      .select("*")
-      .eq("status", "approved")
-      .order("requested_start", { ascending: true })
-
-    if (error) {
-      toast.error("Failed to load approved requests")
-      return
+  const fetchAll = async () => {
+    const { data: reqData } = await supabase.from('block_requests').select('*').order('created_at', { ascending: false })
+    const { data: logData } = await supabase.from('execution_logs').select('*')
+    if (reqData) {
+      setApproved(reqData.filter((r: any) => r.status === 'approved'))
+      setInProgress(reqData.filter((r: any) => r.status === 'in_progress'))
+      const exec = reqData.filter((r: any) => r.status === 'executed')
+      const map: Record<string, any> = {}
+      if (logData) {
+        for (const log of logData) {
+          if (log.status === 'completed') map[log.block_request_id] = log
+        }
+      }
+      setLogsMap(map)
+      setCompleted(exec)
     }
-    setApprovedRequests((data ?? []) as BlockRequest[])
   }
 
-  const fetchCompleted = async () => {
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from("execution_logs")
-      .select("*")
-      .order("actual_start", { ascending: false })
+  useEffect(() => { fetchAll() }, [])
 
-    if (error) {
-      toast.error("Failed to load completed work")
-      return
-    }
-    setLogs((data ?? []) as ExecutionLog[])
+  const handleStart = async (req: any) => {
+    setLoading(true)
+    try {
+      await supabase.from('execution_logs').insert({ block_request_id: req.id, actual_start: new Date().toISOString(), status: 'in_progress' })
+      await supabase.from('block_requests').update({ status: 'in_progress' }).eq('id', req.id)
+      toast.success('Work started')
+      fetchAll()
+    } catch (e: any) { toast.error(e.message) }
+    setLoading(false)
   }
 
-  const fetchExecutedRequests = async () => {
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from("block_requests")
-      .select("*")
-      .eq("status", "executed")
-
-    if (error) {
-      toast.error("Failed to load executed requests")
-      return
-    }
-    setExecutedRequests((data ?? []) as BlockRequest[])
+  const handleUseLocation = () => {
+    navigator.geolocation.getCurrentPosition((pos) => {
+      setLat(pos.coords.latitude.toString())
+      setLng(pos.coords.longitude.toString())
+      toast.success('Location captured')
+    }, () => toast.error('Failed to get location'))
   }
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const supabase = createClient()
+  const uploadImage = async (file: File) => {
+    const fileName = `${Date.now()}-${file.name}`
+    const { error } = await supabase.storage.from('execution-images').upload(fileName, file)
+    if (error) throw error
+    const { data } = supabase.storage.from('execution-images').getPublicUrl(fileName)
+    return data.publicUrl
+  }
 
-      const { data: segData } = await supabase
-        .from("segments")
-        .select("id, name, from_station_id, to_station_id")
-        .order("name")
-      const { data: stnData } = await supabase
-        .from("stations")
-        .select("id, name")
-
-      setSegments(segData ?? [])
-      setStations((stnData ?? []) as Station[])
-
-      await Promise.all([
-        fetchPending(),
-        fetchCompleted(),
-        fetchExecutedRequests(),
-      ])
-      setLoading(false)
-    }
-
-    void fetchData()
-  }, [])
-
-  const handleLogged = () => {
-    void fetchPending()
-    void fetchCompleted()
-    void fetchExecutedRequests()
+  const handleComplete = async () => {
+    if (!selected) return
+    setLoading(true)
+    try {
+      let beforeUrl = '', afterUrl = ''
+      if (beforeFile) beforeUrl = await uploadImage(beforeFile)
+      if (afterFile) afterUrl = await uploadImage(afterFile)
+      const endTime = actualEnd? new Date(actualEnd).toISOString() : new Date().toISOString()
+      const { data: logs } = await supabase.from('execution_logs').select('*').eq('block_request_id', selected.id).eq('status', 'in_progress').order('actual_start', { ascending: false }).limit(1)
+      if (logs && logs[0]) {
+        await supabase.from('execution_logs').update({ before_image_url: beforeUrl, after_image_url: afterUrl, actual_end: endTime, geo_lat: lat? parseFloat(lat) : null, geo_lng: lng? parseFloat(lng) : null, status: 'completed' }).eq('id', logs[0].id)
+      }
+      await supabase.from('block_requests').update({ status: 'executed' }).eq('id', selected.id)
+      fetch('/api/update-stats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ segment_id: selected.segment_id, work_type: selected.work_type }) }).catch(err => console.error(err))
+      toast.success('Work completed')
+      setOpen(false)
+      setSelected(null)
+      setBeforeFile(null)
+      setAfterFile(null)
+      fetchAll()
+    } catch (e: any) { toast.error(e.message) }
+    setLoading(false)
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Field</h1>
-        <p className="text-muted-foreground">
-          Execution logs and field operations.
-        </p>
-      </div>
+    <div className="p-6 bg-white min-h-screen space-y-8">
+      <h1 className="text-2xl font-bold">Field Execution Dashboard</h1>
+      <Card><CardHeader><CardTitle>Approved - Ready to Start</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b"><th className="text-left p-2">ID</th><th className="text-left p-2">Segment</th><th className="text-left p-2">Work</th><th className="text-left p-2">Duration</th><th className="text-left p-2">Action</th></tr></thead><tbody>{approved.map((r: any) => (<tr key={r.id} className="border-b"><td className="p-2">{r.id.slice(0,8)}</td><td className="p-2">{r.segment_id}</td><td className="p-2">{r.work_type}</td><td className="p-2">{r.requested_duration_mins} m</td><td className="p-2"><Button onClick={() => handleStart(r)} disabled={loading} className="bg-[#960DF2] min-h-[44px]">Start Work</Button></td></tr>))}</tbody></table>{approved.length === 0 && <p className="text-gray-500 p-4">No approved requests</p>}</div></CardContent></Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Approved Requests</CardTitle>
-          <CardDescription>
-            Block requests awaiting execution, sorted by requested start time.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <PendingTable
-            requests={approvedRequests}
-            segments={segments}
-            stations={stations}
-            loading={loading}
-            onLogged={handleLogged}
-          />
-        </CardContent>
-      </Card>
+      <Card className="border-[#960DF2] border-2"><CardHeader><CardTitle>In Progress</CardTitle></CardHeader><CardContent><table className="w-full text-sm"><thead><tr className="border-b"><th className="text-left p-2">ID</th><th className="text-left p-2">Segment</th><th className="text-left p-2">Action</th></tr></thead><tbody>{inProgress.map((r: any) => (<tr key={r.id} className="border-b"><td className="p-2">{r.id.slice(0,8)}</td><td className="p-2">{r.segment_id}</td><td className="p-2"><Button onClick={() => { setSelected(r); setActualEnd(new Date().toISOString().slice(0,16)); setOpen(true)}} className="bg-green-600 min-h-[44px]">Complete Work</Button></td></tr>))}</tbody></table>{inProgress.length === 0 && <p className="text-gray-500 p-4">No work in progress</p>}</CardContent></Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Completed Work</CardTitle>
-          <CardDescription>
-            Executed block requests with duration variance and image previews.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <CompletedTable
-            logs={logs}
-            requests={executedRequests}
-            segments={segments}
-            stations={stations}
-            loading={loading}
-          />
-        </CardContent>
-      </Card>
+      <Card><CardHeader><CardTitle>Completed Work</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b"><th className="text-left p-2">ID</th><th className="text-left p-2">Variance</th><th className="text-left p-2">Before</th><th className="text-left p-2">After</th></tr></thead><tbody>
+      {completed.map((r: any) => {
+        const log = logsMap[r.id];
+        let variance = 0;
+        if (log?.actual_start && log?.actual_end) {
+          const mins = (new Date(log.actual_end).getTime() - new Date(log.actual_start).getTime())/60000;
+          variance = Math.round(mins - r.requested_duration_mins); // KEEP SIGN - NO Math.abs
+        }
+        return (
+          <tr key={r.id} className="border-b">
+            <td className="p-2">{r.id.slice(0,8)}</td>
+            <td className="p-2">
+              <span className={`px-2 py-1 rounded text-xs font-medium ${variance < 0? 'bg-green-100 text-green-700' : variance > 0? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                {variance < 0? `Early by ${Math.abs(variance)} mins` : variance > 0? `Delay by ${variance} mins` : 'On Time'}
+              </span>
+            </td>
+            <td className="p-2">{log?.before_image_url? <a href={log.before_image_url} target="_blank"><img src={log.before_image_url} className="w-12 h-12 object-cover rounded"/></a> : '-'}</td>
+            <td className="p-2">{log?.after_image_url? <a href={log.after_image_url} target="_blank"><img src={log.after_image_url} className="w-12 h-12 object-cover rounded"/></a> : '-'}</td>
+          </tr>
+        )
+      })}
+      </tbody></table></div></CardContent></Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="bg-white">
+          <DialogHeader><DialogTitle>Complete Work - {selected?.id?.slice(0,8)}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div><label className="text-sm">Before Photo</label><Input type="file" accept="image/*" onChange={e=> setBeforeFile(e.target.files?.[0]||null)} /></div>
+            <div><label className="text-sm">After Photo</label><Input type="file" accept="image/*" onChange={e=> setAfterFile(e.target.files?.[0]||null)} /></div>
+            <div><label className="text-sm">Actual End Time</label><Input type="datetime-local" value={actualEnd} onChange={e=> setActualEnd(e.target.value)} /></div>
+            <div className="flex gap-2"><Input placeholder="Lat" value={lat} onChange={e=> setLat(e.target.value)} /><Input placeholder="Lng" value={lng} onChange={e=> setLng(e.target.value)} /><Button onClick={handleUseLocation} variant="outline">Use My Location</Button></div>
+            <Button onClick={handleComplete} disabled={loading} className="w-full bg-green-600 min-h-[44px]">{loading?'Submitting...':'Submit Completion'}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -29,7 +29,7 @@ export interface TimetableEntry {
 }
 
 export type BlockRequestWorkType = 'track' | 'signal' | 'electrical' | 'other'
-export type BlockRequestStatus = 'submitted' | 'scored' | 'approved' | 'executed' | 'rejected'
+export type BlockRequestStatus = 'submitted' | 'pending' | 'scored' | 'approved' | 'executed' | 'rejected' | 'safety_blocked'
 export type SafetyCriticality = 'routine' | 'urgent' | 'safety_critical'
 
 export interface BlockRequest {

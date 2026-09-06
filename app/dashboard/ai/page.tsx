@@ -4,36 +4,39 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Slider } from "@/components/ui/slider"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { toast } from "sonner"
-import { BlockRequest } from "@/lib/types"
 import { useEffect, useState } from "react"
-import { Loader2, Play } from "lucide-react"
+import { ChevronDown, ChevronUp, Loader2, RefreshCw, ShieldAlert } from "lucide-react"
+import { cn } from "@/lib/utils"
 
-type Row = BlockRequest & {
-  trains_scheduled_in_window?: number | null
-  asset_risk_flag?: number | null
-  historical_overrun_rate?: number | null
+type BlockRequestRow = {
+  id: string
+  segment_id: number | null
+  work_type: string
+  requested_start: string
+  requested_duration_mins: number
+  safety_criticality: string
+  work_description: string | null
+  justification: string | null
+  status: string
+  priority_score: number | null
+  delay_risk: string | null
+  created_at: string
 }
 
-type Draft = { duration: number; trains: number }
+type PlanOption = {
+  id: string
+  block_request_id: string
+  option_label: string
+  adjusted_start: string
+  adjusted_duration_mins: number
+  priority_score: number | null
+  delay_risk: string | null
+  explanation: string | null
+  is_recommended: boolean
+  what_if_note: string | null
+}
 
 const supabase = createClient()
 
@@ -57,6 +60,7 @@ function safetyBadge(criticality: string | null | undefined) {
     case "critical":
     case "safety_critical":
       return "text-red-700 dark:text-red-400 bg-red-500/10 border-red-600/20"
+    case "urgent":
     case "high":
       return "text-orange-700 dark:text-orange-400 bg-orange-500/10 border-orange-600/20"
     case "medium":
@@ -69,164 +73,235 @@ function safetyBadge(criticality: string | null | undefined) {
   }
 }
 
-function formatStart(requestedStart: string) {
-  const parsed = Date.parse(requestedStart)
-  if (Number.isNaN(parsed)) return requestedStart
-  return new Date(parsed).toLocaleString([], {
+function formatDateTime(value: string) {
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) return value
+  return new Date(parsed).toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   })
 }
 
 export default function AiPage() {
-  const [requests, setRequests] = useState<Row[]>([])
+  const [requests, setRequests] = useState<BlockRequestRow[]>([])
+  const [optionsByRequest, setOptionsByRequest] = useState<Record<string, PlanOption[]>>({})
   const [loading, setLoading] = useState(true)
-  const [scoring, setScoring] = useState(false)
-  const [explanations, setExplanations] = useState<Record<string, string>>({})
-  const [explaining, setExplaining] = useState<Record<string, boolean>>({})
-  const [whatIfOpenId, setWhatIfOpenId] = useState<string | null>(null)
-  const [whatIfDrafts, setWhatIfDrafts] = useState<Record<string, Draft>>({})
-  const [whatIfScores, setWhatIfScores] = useState<Record<string, number | null>>({})
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [reprocessing, setReprocessing] = useState<Record<string, boolean>>({})
 
-  const loadRequests = async () => {
+  const loadAll = async () => {
     setLoading(true)
-    const { data, error } = await supabase
+    const { data: reqData, error: reqError } = await supabase
       .from("block_requests")
       .select("*")
-      .in("status", ["submitted", "scored"])
+      .in("status", ["submitted", "scored", "safety_blocked"])  
       .order("created_at", { ascending: false })
-    if (error) {
+
+    if (reqError) {
       toast.error("Failed to load block requests")
       setRequests([])
-    } else {
-      setRequests((data ?? []) as Row[])
+      setLoading(false)
+      return
     }
+
+    const rows = (reqData ?? []) as BlockRequestRow[]
+    setRequests(rows)
+
+    if (rows.length > 0) {
+      const ids = rows.map((r) => r.id)
+      const { data: optData, error: optError } = await supabase
+        .from("block_plan_options")
+        .select("*")
+        .in("block_request_id", ids)
+
+      if (!optError) {
+        const grouped: Record<string, PlanOption[]> = {}
+        for (const opt of (optData ?? []) as PlanOption[]) {
+          if (!grouped[opt.block_request_id]) grouped[opt.block_request_id] = []
+          grouped[opt.block_request_id].push(opt)
+        }
+        setOptionsByRequest(grouped)
+      }
+    }
+
     setLoading(false)
   }
 
   useEffect(() => {
-    loadRequests()
+    loadAll()
   }, [])
 
-  const sorted = [...requests].sort((a, b) => {
-    const sa = a.priority_score ?? -Infinity
-    const sb = b.priority_score ?? -Infinity
-    return sb - sa
-  })
-
-  const pendingCount = requests.filter((r) => r.priority_score === null).length
-  const scoredScores = requests
-    .map((r) => r.priority_score)
-    .filter((s): s is number => s !== null)
-  const avgScore = scoredScores.length
-    ? Math.round(scoredScores.reduce((sum, s) => sum + s, 0) / scoredScores.length)
-    : null
-  const delayRiskCounts = { low: 0, medium: 0, high: 0 }
-  for (const r of requests) {
-    const level = (r.delay_risk ?? "").toLowerCase()
-    if (level === "low" || level === "medium" || level === "high") {
-      delayRiskCounts[level]++
-    }
+  const toggleExpanded = (id: string) => {
+    setExpanded((p) => ({ ...p, [id]: !p[id] }))
   }
 
-  const handleScoreAll = async () => {
-    const pending = requests.filter((r) => r.priority_score === null)
-    if (pending.length === 0) {
-      toast.info("No pending requests to score")
-      return
-    }
-    setScoring(true)
-    const toastId = toast.loading(`Scoring ${pending.length} request(s)...`)
-    let failed = 0
-    await Promise.all(
-      pending.map(async (r) => {
-        const res = await fetch("/api/score", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: r.id }),
-        })
-        const json = await res.json()
-        if (!res.ok || json.error) failed += 1
-      })
-    )
-    toast.dismiss(toastId)
-    if (failed > 0) {
-      toast.error(`${failed} request(s) failed to score`)
-    } else {
-      toast.success(`${pending.length} request(s) scored`)
-    }
-    setScoring(false)
-    await loadRequests()
-  }
-
-  const handleGenerateExplanation = async (id: string) => {
-    setExplaining((p) => ({ ...p, [id]: true }))
+  const handleReprocess = async (id: string) => {
+    setReprocessing((p) => ({ ...p, [id]: true }))
     try {
-      const res = await fetch("/api/explain", {
+      const res = await fetch("/api/auto-process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ requestId: id, block_request_id: id }),
       })
       const json = await res.json()
       if (!res.ok || json.error) {
-        toast.error(json.error ?? "Failed to generate explanation")
+        toast.error(json.error ?? "Reprocessing failed")
         return
       }
-      setExplanations((p) => ({ ...p, [id]: json.ai_explanation }))
-      toast.success("Explanation generated")
+      toast.success("Reprocessed successfully")
+      await loadAll()
     } catch {
-      toast.error("Failed to generate explanation")
+      toast.error("Reprocessing failed")
     } finally {
-      setExplaining((p) => ({ ...p, [id]: false }))
+      setReprocessing((p) => ({ ...p, [id]: false }))
     }
   }
 
-  const previewScore = async (id: string, duration: number, trains: number) => {
-    const res = await fetch("/api/score", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id,
-        preview: true,
-        requested_duration_mins: duration,
-        trains_scheduled_in_window: trains,
-      }),
-    })
-    const json = await res.json()
-    if (!res.ok || json.error) {
-      toast.error(json.error ?? "Preview failed")
-      return
-    }
-    setWhatIfScores((p) => ({ ...p, [id]: json.priority_score ?? null }))
-  }
+  const safetyBlocked = requests.filter((r) => r.status === "safety_blocked")
+  const scored = [...requests.filter((r) => r.status === "scored")].sort(
+    (a, b) => (b.priority_score ?? -Infinity) - (a.priority_score ?? -Infinity)
+  )
 
-  useEffect(() => {
-    if (!whatIfOpenId) return
-    const draft = whatIfDrafts[whatIfOpenId]
-    if (!draft) return
-    const id = setTimeout(() => {
-      previewScore(whatIfOpenId, draft.duration, draft.trains)
-    }, 500)
-    return () => clearTimeout(id)
-  }, [whatIfDrafts, whatIfOpenId])
+  const renderOptionCard = (opt: PlanOption) => (
+    <div
+      key={opt.id}
+      className={cn(
+        "flex-1 min-w-[220px] rounded-lg border p-4 space-y-2",
+        opt.is_recommended && "border-2 border-[#960DF2]"
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold">{opt.option_label}</span>
+        {opt.is_recommended && (
+          <Badge className="bg-[#960DF2] hover:bg-[#960DF2] text-white text-xs">
+            Recommended
+          </Badge>
+        )}
+      </div>
+      <div className="text-sm text-muted-foreground">
+        <span suppressHydrationWarning>{formatDateTime(opt.adjusted_start)}</span> · {opt.adjusted_duration_mins} min
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-lg font-bold text-primary">
+          {opt.priority_score != null ? Math.round(opt.priority_score) : "—"}
+        </span>
+        {opt.delay_risk && (
+          <Badge variant="outline" className={delayRiskBadge(opt.delay_risk)}>
+            {opt.delay_risk}
+          </Badge>
+        )}
+      </div>
+      {opt.explanation && (
+        <p className="text-sm text-muted-foreground">{opt.explanation}</p>
+      )}
+      {opt.is_recommended && opt.what_if_note && (
+        <p className="text-sm italic text-muted-foreground border-t pt-2 mt-2">
+          {opt.what_if_note}
+        </p>
+      )}
+    </div>
+  )
 
-  const openWhatIf = (row: Row) => {
-    setWhatIfDrafts((p) => ({
-      ...p,
-      [row.id]: {
-        duration: row.requested_duration_mins,
-        trains: row.trains_scheduled_in_window ?? 1,
-      },
-    }))
-    setWhatIfScores((p) => ({ ...p, [row.id]: null }))
-    setWhatIfOpenId(row.id)
-  }
+  const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blocked") => {
+    const options = optionsByRequest[row.id] ?? []
+    const isOpen = !!expanded[row.id]
+    const isReprocessing = !!reprocessing[row.id]
 
-  const updateDraft = (id: string, patch: Partial<Draft>) => {
-    setWhatIfDrafts((p) => ({
-      ...p,
-      [id]: { ...p[id], ...patch },
-    }))
+    return (
+      <Card
+        key={row.id}
+        className={cn(variant === "safety_blocked" && "border-2 border-red-600/50")}
+      >
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium">{row.work_type}</span>
+                <Badge variant="outline" className={safetyBadge(row.safety_criticality)}>
+                  {row.safety_criticality}
+                </Badge>
+                {variant === "safety_blocked" && (
+                  <Badge variant="outline" className="text-red-700 dark:text-red-400 bg-red-500/10 border-red-600/20">
+                    <ShieldAlert className="h-3.5 w-3.5 mr-1" />
+                    Safety blocked
+                  </Badge>
+                )}
+              </div>
+              {row.work_description && (
+                <p className="text-sm">{row.work_description}</p>
+              )}
+              {row.justification && (
+                <p className="text-sm text-muted-foreground italic">
+                  {row.justification}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+               Requested start: <span suppressHydrationWarning>{formatDateTime(row.requested_start)}</span> · {row.requested_duration_mins} min
+              </p>
+            </div>
+            {variant === "scored" && (
+              <div className="text-right shrink-0">
+                <div className="text-2xl font-bold text-primary">
+                  {row.priority_score != null ? Math.round(row.priority_score) : "—"}
+                </div>
+                {row.delay_risk && (
+                  <Badge variant="outline" className={delayRiskBadge(row.delay_risk)}>
+                    {row.delay_risk}
+                  </Badge>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => toggleExpanded(row.id)}
+              className="px-2"
+            >
+              {isOpen ? (
+                <>
+                  <ChevronUp className="h-4 w-4 mr-1" /> Hide plan options
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-4 w-4 mr-1" /> Show plan options ({options.length})
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleReprocess(row.id)}
+              disabled={isReprocessing}
+            >
+              {isReprocessing ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  Reprocessing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                  Reprocess
+                </>
+              )}
+            </Button>
+          </div>
+
+          {isOpen && (
+            <div className="flex flex-wrap gap-3 pt-2 border-t">
+              {options.length > 0 ? (
+                options.map(renderOptionCard)
+              ) : (
+                <p className="text-sm text-muted-foreground">No plan options found.</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
@@ -235,272 +310,49 @@ export default function AiPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">AI Priority & Scoring</h1>
           <p className="text-muted-foreground">
-            AI-ranked block requests with priority scoring and explanations.
+            Requests are scored and planned automatically — nothing to run manually here.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadRequests} disabled={loading}>
-            Refresh
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handleScoreAll}
-            disabled={scoring || loading}
-          >
-            {scoring ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Scoring...
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4 mr-2" />
-                Score All Pending
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-xs uppercase text-muted-foreground">Pending</p>
-            <div className="text-2xl font-bold">{pendingCount}</div>
-            <p className="text-xs text-muted-foreground">unscored requests</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-xs uppercase text-muted-foreground">Avg priority</p>
-            <div className="text-2xl font-bold">{avgScore ?? "—"}</div>
-            <p className="text-xs text-muted-foreground">of {scoredScores.length} scored</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-xs uppercase text-muted-foreground">Delay risk</p>
-            <div className="mt-2 flex justify-around">
-              <div className="flex flex-col items-center">
-                <span className="text-xl font-bold text-green-600">
-                  {delayRiskCounts.low}
-                </span>
-                <span className="text-[10px] text-muted-foreground">Low</span>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-xl font-bold text-amber-600">
-                  {delayRiskCounts.medium}
-                </span>
-                <span className="text-[10px] text-muted-foreground">Med</span>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-xl font-bold text-red-600">
-                  {delayRiskCounts.high}
-                </span>
-                <span className="text-[10px] text-muted-foreground">High</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
+          Refresh
+        </Button>
       </div>
 
       {loading ? (
         <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 w-full" />
           ))}
         </div>
-      ) : sorted.length === 0 ? (
+      ) : requests.length === 0 ? (
         <Card>
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">
-              No submitted or scored block requests.
+              No processed block requests yet.
             </p>
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[90px]">Priority</TableHead>
-                  <TableHead>Request</TableHead>
-                  <TableHead>Segment</TableHead>
-                  <TableHead>Start</TableHead>
-                  <TableHead className="w-[110px]">Duration</TableHead>
-                  <TableHead className="w-[120px]">Delay risk</TableHead>
-                  <TableHead className="w-[200px]">Explanation</TableHead>
-                  <TableHead className="w-[160px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sorted.map((row, index) => {
-                  const isTop = index === 0 && row.priority_score != null
-                  const hasScore = row.priority_score != null
-                  return (
-                    <TableRow
-                      key={row.id}
-                      className={isTop ? "border-l-4 border-[#960DF2]" : undefined}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          {hasScore ? (
-                            <span
-                              className={
-                                index < 3
-                                  ? "text-lg font-bold text-primary"
-                                  : "text-sm font-medium"
-                              }
-                            >
-                              {Math.round(row.priority_score!)}
-                            </span>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">—</span>
-                          )}
-                          {isTop && (
-                            <Badge variant="secondary" className="text-xs">
-                              Top
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{row.work_type}</span>
-                          <Badge
-                            variant="outline"
-                            className={safetyBadge(row.safety_criticality)}
-                          >
-                            {row.safety_criticality}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>{row.segment_id ?? "—"}</TableCell>
-                      <TableCell className="text-sm">
-                        {formatStart(row.requested_start)}
-                      </TableCell>
-                      <TableCell>{row.requested_duration_mins} min</TableCell>
-                      <TableCell>
-                        {row.delay_risk ? (
-                          <Badge
-                            variant="outline"
-                            className={delayRiskBadge(row.delay_risk)}
-                          >
-                            {row.delay_risk}
-                          </Badge>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {explanations[row.id] ? (
-                          <p className="mt-1 animate-in fade-in text-sm italic text-muted-foreground">
-                            {explanations[row.id]}
-                          </p>
-                        ) : (
-                          <Button
-                            variant="link"
-                            size="sm"
-                            disabled={!hasScore || explaining[row.id]}
-                            onClick={() => handleGenerateExplanation(row.id)}
-                          >
-                            {explaining[row.id] ? "Generating..." : "Generate"}
-                          </Button>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Dialog
-                          open={whatIfOpenId === row.id}
-                          onOpenChange={(open) => {
-                            if (open) openWhatIf(row)
-                            else setWhatIfOpenId(null)
-                          }}
-                        >
-                          <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              What if?
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>What if…</DialogTitle>
-                              <DialogDescription>
-                                Adjust duration and trains to see how the
-                                priority score changes (preview only — nothing is saved).
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-5 py-2">
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <label className="text-sm font-medium">
-                                    Duration (minutes)
-                                  </label>
-                                  <span className="text-sm font-medium">
-                                    {whatIfDrafts[row.id]?.duration ??
-                                      row.requested_duration_mins}
-                                  </span>
-                                </div>
-                                <Slider
-                                  value={[
-                                    whatIfDrafts[row.id]?.duration ??
-                                      row.requested_duration_mins,
-                                  ]}
-                                  min={30}
-                                  max={240}
-                                  step={10}
-                                  onValueChange={(v) =>
-                                    updateDraft(row.id, { duration: v[0] })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <label className="text-sm font-medium">
-                                    Trains in window
-                                  </label>
-                                  <span className="text-sm font-medium">
-                                    {whatIfDrafts[row.id]?.trains ??
-                                      row.trains_scheduled_in_window ??
-                                      0}
-                                  </span>
-                                </div>
-                                <Slider
-                                  value={[
-                                    whatIfDrafts[row.id]?.trains ??
-                                      row.trains_scheduled_in_window ??
-                                      1,
-                                  ]}
-                                  min={0}
-                                  max={8}
-                                  step={1}
-                                  onValueChange={(v) =>
-                                    updateDraft(row.id, { trains: v[0] })
-                                  }
-                                />
-                              </div>
-                              <div className="rounded-md border bg-muted/40 p-3 text-center">
-                                <span className="text-xs uppercase text-muted-foreground">
-                                  Predicted priority
-                                </span>
-                                <p className="text-2xl font-bold">
-                                  {whatIfScores[row.id] == null
-                                    ? "—"
-                                    : Math.round(whatIfScores[row.id] as number)}
-                                </p>
-                              </div>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          {safetyBlocked.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-red-700 dark:text-red-400 flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4" />
+                Safety blocked
+              </h2>
+              {safetyBlocked.map((row) => renderRequestCard(row, "safety_blocked"))}
+            </div>
+          )}
+
+          {scored.length > 0 && (
+            <div className="space-y-3">
+              {safetyBlocked.length > 0 && (
+                <h2 className="text-sm font-semibold text-muted-foreground">Scored requests</h2>
+              )}
+              {scored.map((row) => renderRequestCard(row, "scored"))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
