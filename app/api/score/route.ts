@@ -97,6 +97,8 @@ export async function POST(request: NextRequest) {
         trains_scheduled_in_window: trains_scheduled_in_window ?? blockRequest.trains_scheduled_in_window ?? 0,
         asset_risk_flag: blockRequest.asset_risk_flag ?? 0,
         historical_overrun_rate: blockRequest.historical_overrun_rate ?? 0,
+        text_urgency_score: (blockRequest as any).text_urgency_score ?? ((blockRequest as any).work_description ? 7 : 5),
+        description: (blockRequest as any).work_description ?? blockRequest.work_type ?? "",
       }),
       cache: 'no-store',
     })
