@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -29,6 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import Link from "next/link"
 import { toast } from "sonner"
 import { ClipboardList, Copy, Search } from "lucide-react"
 import type { BlockRequest, Segment } from "@/lib/types"
@@ -55,14 +57,20 @@ const SAFETY_OPTIONS = [
   { value: "safety_critical", label: "Safety Critical" },
 ] as const
 
+const DEPARTMENT_OPTIONS = [
+  { value: "TMS", label: "TMS" },
+  { value: "TDMS", label: "TDMS" },
+  { value: "SMMS", label: "SMMS" },
+] as const
+
 const STATUS_CONFIG: Record<
   string,
   { label: string; className: string }
 > = {
   submitted: {
-    label: "Submitted",
+    label: "AI Processing...",
     className:
-      "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
+      "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 animate-badge-pulse",
   },
   scored: {
     label: "Scored",
@@ -153,6 +161,9 @@ export default function MaintenancePage() {
   )
   const [duration, setDuration] = useState<string>("")
   const [safetyCriticality, setSafetyCriticality] = useState<string>("")
+  const [department, setDepartment] = useState<string>("")
+  const [workDescription, setWorkDescription] = useState<string>("")
+  const [justification, setJustification] = useState<string>("")
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const [searchQuery, setSearchQuery] = useState<string>("")
@@ -223,11 +234,14 @@ export default function MaintenancePage() {
   }
 
   const resetForm = () => {
+    setDepartment("")
     setSegmentId("")
     setWorkType("")
     setRequestedStart(toDateTimeLocal(new Date()))
     setDuration("")
     setSafetyCriticality("")
+    setWorkDescription("")
+    setJustification("")
     setErrors({})
   }
 
@@ -248,6 +262,7 @@ export default function MaintenancePage() {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
+    if (!department) newErrors.department = "Please select a department"
     if (!segmentId) newErrors.segment = "Please select a segment"
     if (!workType) newErrors.workType = "Please select a work type"
     if (!requestedStart)
@@ -256,6 +271,12 @@ export default function MaintenancePage() {
       newErrors.duration = "Please enter a valid duration"
     if (!safetyCriticality)
       newErrors.safety = "Please select a safety level"
+    if (!workDescription || workDescription.trim().length < 10)
+      newErrors.workDescription =
+        "Work description must be at least 10 characters"
+    if (!justification || justification.trim().length < 10)
+      newErrors.justification =
+        "Justification must be at least 10 characters"
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -271,15 +292,22 @@ export default function MaintenancePage() {
     setIsSubmitting(true)
 
     const supabase = createClient()
-    const { error } = await supabase.from("block_requests").insert({
-      segment_id: Number(segmentId),
-      work_type: workType,
-      requested_start: `${requestedStart}:00`,
-      requested_duration_mins: Number(duration),
-      safety_criticality: safetyCriticality,
-      status: "submitted",
-      requested_by: user.id,
-    })
+    const { data: newRequest, error } = await supabase
+      .from("block_requests")
+      .insert({
+        department: department,
+        segment_id: Number(segmentId),
+        work_type: workType,
+        work_description: workDescription,
+        justification: justification,
+        requested_start: `${requestedStart}:00`,
+        requested_duration_mins: Number(duration),
+        safety_criticality: safetyCriticality,
+        status: "submitted",
+        requested_by: user.id,
+      })
+      .select("id")
+      .single()
 
     if (error) {
       toast.error(`Failed to submit request: ${error.message}`)
@@ -287,7 +315,25 @@ export default function MaintenancePage() {
       return
     }
 
-    toast.success("Block request submitted successfully")
+    toast.success("Request submitted — AI is scoring it now.")
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/auto-process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: newRequest?.id }),
+        })
+        if (!res.ok) {
+          console.error(
+            `auto-process failed (${res.status}): ${res.statusText}`,
+          )
+        }
+      } catch (err) {
+        console.error("auto-process failed", err)
+      }
+    })()
+
     resetForm()
     void fetchRequests()
     setIsSubmitting(false)
@@ -297,12 +343,15 @@ export default function MaintenancePage() {
     return Boolean(
       user &&
         !loading &&
+        department &&
         segmentId &&
         workType &&
         requestedStart &&
         duration &&
         Number(duration) > 0 &&
-        safetyCriticality,
+        safetyCriticality &&
+        workDescription.trim().length >= 10 &&
+        justification.trim().length >= 10,
     )
   }
 
@@ -399,6 +448,39 @@ export default function MaintenancePage() {
 
             <div className="space-y-2">
               <label
+                htmlFor="department"
+                className="text-sm font-medium leading-none"
+              >
+                Department
+              </label>
+              <Select
+                value={department}
+                onValueChange={setDepartment}
+                disabled={loading}
+              >
+                <SelectTrigger id="department">
+                  <SelectValue placeholder="Select a department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEPARTMENT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.department && (
+                <p
+                  className="text-xs text-destructive"
+                  id="department-error"
+                >
+                  {errors.department}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label
                 htmlFor="work-type"
                 className="text-sm font-medium leading-none"
               >
@@ -426,6 +508,54 @@ export default function MaintenancePage() {
                   id="work-type-error"
                 >
                   {errors.workType}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <label
+                htmlFor="work-description"
+                className="text-sm font-medium leading-none"
+              >
+                Work Description
+              </label>
+              <Textarea
+                id="work-description"
+                placeholder="Describe the maintenance work to be performed"
+                value={workDescription}
+                onChange={(e) => setWorkDescription(e.target.value)}
+                disabled={loading}
+              />
+              {errors.workDescription && (
+                <p
+                  className="text-xs text-destructive"
+                  id="work-description-error"
+                >
+                  {errors.workDescription}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <label
+                htmlFor="justification"
+                className="text-sm font-medium leading-none"
+              >
+                Justification
+              </label>
+              <Textarea
+                id="justification"
+                placeholder="Why is this work needed now?"
+                value={justification}
+                onChange={(e) => setJustification(e.target.value)}
+                disabled={loading}
+              />
+              {errors.justification && (
+                <p
+                  className="text-xs text-destructive"
+                  id="justification-error"
+                >
+                  {errors.justification}
                 </p>
               )}
             </div>
@@ -631,9 +761,28 @@ export default function MaintenancePage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {request.priority_score !== null
-                              ? request.priority_score.toFixed(1)
-                              : "Pending AI review"}
+                            {request.status === "scored" &&
+                            request.priority_score !== null ? (
+                              <div className="flex items-center gap-2">
+                                <span>{request.priority_score.toFixed(1)}</span>
+                                <Link
+                                  href="/dashboard/ai"
+                                  className="text-xs font-medium text-primary underline decoration-primary/50 underline-offset-2 hover:decoration-primary"
+                                >
+                                  View AI Plan
+                                </Link>
+                              </div>
+                            ) : request.status === "submitted" ? (
+                              <span className="text-sm text-muted-foreground">
+                                AI Processing...
+                              </span>
+                            ) : request.priority_score !== null ? (
+                              <span>{request.priority_score.toFixed(1)}</span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">
+                                Pending AI review
+                              </span>
+                            )}
                           </TableCell>
                         </TableRow>
                       )

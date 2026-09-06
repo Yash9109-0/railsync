@@ -83,6 +83,10 @@ export default {
           from: { opacity: "1" },
           to: { opacity: "0" },
         },
+        "badge-pulse": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.55" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -91,6 +95,7 @@ export default {
         "accordion-slide-up": "accordion-slide-up 0.2s ease-out",
         "fade-in": "fade-in 0.2s ease-out",
         "fade-out": "fade-out 0.2s ease-out",
+        "badge-pulse": "badge-pulse 1.5s ease-in-out infinite",
       },
     },
   },

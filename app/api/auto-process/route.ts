@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { analyzeUrgency } from '@/lib/llm'
+import { scoreBlockRequest, ScoreError } from "@/lib/scoring"
 
+type AutoProcessRequestBody = {
+  id?: string
+}
 // NOTE: On Vercel's Hobby plan, functions hard-cap at 10s regardless of this
 // setting. Setting it here has no effect until/unless you're on Pro (raises
 // the cap to 60s) or Enterprise (90s). Left in so it's ready either way.
