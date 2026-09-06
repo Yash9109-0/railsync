@@ -98,8 +98,44 @@ export default function FieldPage() {
     <div className="p-6 bg-white min-h-screen space-y-8">
       <h1 className="text-2xl font-bold">Field Execution Dashboard</h1>
       <Card><CardHeader><CardTitle>Approved - Ready to Start</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b"><th className="text-left p-2">ID</th><th className="text-left p-2">Segment</th><th className="text-left p-2">Work</th><th className="text-left p-2">Duration</th><th className="text-left p-2">Action</th></tr></thead><tbody>{approved.map((r: any) => (<tr key={r.id} className="border-b"><td className="p-2">{r.id.slice(0,8)}</td><td className="p-2">{r.segment_id}</td><td className="p-2">{r.work_type}</td><td className="p-2">{r.requested_duration_mins} m</td><td className="p-2"><Button onClick={() => handleStart(r)} disabled={loading} className="bg-[#960DF2] min-h-[44px]">Start Work</Button></td></tr>))}</tbody></table>{approved.length === 0 && <p className="text-gray-500 p-4">No approved requests</p>}</div></CardContent></Card>
+
       <Card className="border-[#960DF2] border-2"><CardHeader><CardTitle>In Progress</CardTitle></CardHeader><CardContent><table className="w-full text-sm"><thead><tr className="border-b"><th className="text-left p-2">ID</th><th className="text-left p-2">Segment</th><th className="text-left p-2">Action</th></tr></thead><tbody>{inProgress.map((r: any) => (<tr key={r.id} className="border-b"><td className="p-2">{r.id.slice(0,8)}</td><td className="p-2">{r.segment_id}</td><td className="p-2"><Button onClick={() => { setSelected(r); setActualEnd(new Date().toISOString().slice(0,16)); setOpen(true)}} className="bg-green-600 min-h-[44px]">Complete Work</Button></td></tr>))}</tbody></table>{inProgress.length === 0 && <p className="text-gray-500 p-4">No work in progress</p>}</CardContent></Card>
-      {completed.map((r: any) => { const log = logsMap[r.id]; let variance = 0; if (log?.actual_start && log?.actual_end) { const mins = (new Date(log.actual_end).getTime() - new Date(log.actual_start).getTime())/60000; variance = Math.abs(Math.round(mins - r.requested_duration_mins)); } return (<tr key={r.id} className="border-b"><td className="p-2">{r.id.slice(0,8)}</td><td className="p-2"><span className={`px-2 py-1 rounded ${variance>0?'bg-red-100 text-red-700':'bg-green-100 text-green-700'}`}>{variance} mins</span></td><td className="p-2">{log?.before_image_url?<a href={log.before_image_url} target="_blank"><img src={log.before_image_url} className="w-12 h-12 object-cover rounded"/></a>:'-'}</td><td className="p-2">{log?.after_image_url?<a href={log.after_image_url} target="_blank"><img src={log.after_image_url} className="w-12 h-12 object-cover rounded"/></a>:'-'}</td></tr>)})}
+
+      <Card><CardHeader><CardTitle>Completed Work</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b"><th className="text-left p-2">ID</th><th className="text-left p-2">Variance</th><th className="text-left p-2">Before</th><th className="text-left p-2">After</th></tr></thead><tbody>
+      {completed.map((r: any) => {
+        const log = logsMap[r.id];
+        let variance = 0;
+        if (log?.actual_start && log?.actual_end) {
+          const mins = (new Date(log.actual_end).getTime() - new Date(log.actual_start).getTime())/60000;
+          variance = Math.round(mins - r.requested_duration_mins); // KEEP SIGN - NO Math.abs
+        }
+        return (
+          <tr key={r.id} className="border-b">
+            <td className="p-2">{r.id.slice(0,8)}</td>
+            <td className="p-2">
+              <span className={`px-2 py-1 rounded text-xs font-medium ${variance < 0? 'bg-green-100 text-green-700' : variance > 0? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                {variance < 0? `Early by ${Math.abs(variance)} mins` : variance > 0? `Delay by ${variance} mins` : 'On Time'}
+              </span>
+            </td>
+            <td className="p-2">{log?.before_image_url? <a href={log.before_image_url} target="_blank"><img src={log.before_image_url} className="w-12 h-12 object-cover rounded"/></a> : '-'}</td>
+            <td className="p-2">{log?.after_image_url? <a href={log.after_image_url} target="_blank"><img src={log.after_image_url} className="w-12 h-12 object-cover rounded"/></a> : '-'}</td>
+          </tr>
+        )
+      })}
+      </tbody></table></div></CardContent></Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="bg-white">
+          <DialogHeader><DialogTitle>Complete Work - {selected?.id?.slice(0,8)}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div><label className="text-sm">Before Photo</label><Input type="file" accept="image/*" onChange={e=> setBeforeFile(e.target.files?.[0]||null)} /></div>
+            <div><label className="text-sm">After Photo</label><Input type="file" accept="image/*" onChange={e=> setAfterFile(e.target.files?.[0]||null)} /></div>
+            <div><label className="text-sm">Actual End Time</label><Input type="datetime-local" value={actualEnd} onChange={e=> setActualEnd(e.target.value)} /></div>
+            <div className="flex gap-2"><Input placeholder="Lat" value={lat} onChange={e=> setLat(e.target.value)} /><Input placeholder="Lng" value={lng} onChange={e=> setLng(e.target.value)} /><Button onClick={handleUseLocation} variant="outline">Use My Location</Button></div>
+            <Button onClick={handleComplete} disabled={loading} className="w-full bg-green-600 min-h-[44px]">{loading?'Submitting...':'Submit Completion'}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
