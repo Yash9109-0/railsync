@@ -2,891 +2,751 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 import {
+  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog"
-import {
+  Input,
+  Skeleton,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { toast } from "sonner"
-import {
-  ClipboardList,
-  Loader2,
-  MapPin,
-  Send,
-} from "lucide-react"
-import type {
-  BlockRequest,
-  ExecutionLog,
-  Segment,
-  Station,
-} from "@/lib/types"
-import { Progress } from "@/components/ui/progress"
-import dynamic from "next/dynamic"
+} from "@/components/ui"
+import { Loader2, MapPin, PlayCircle, RefreshCw, Upload, Clock } from "lucide-react"
+import type { BlockRequest, BlockRequestStatus, ExecutionLog } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
-const MapPreview = dynamic(() => import("@/components/MapPreview"), {
-  ssr: false,
-})
-
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  approved: {
-    label: "Approved",
-    className:
-      "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  },
-  executed: {
-    label: "Executed",
-    className:
-      "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  },
+interface SegmentName {
+  name: string
 }
 
-const workTypeLabels: Record<string, string> = {
-  track: "Track",
-  signal: "Signal",
-  electrical: "Electrical",
-  other: "Other",
+interface BlockRequestRow extends BlockRequest {
+  segments: SegmentName | null
 }
 
-const safetyLabels: Record<string, string> = {
-  routine: "Routine",
-  urgent: "Urgent",
-  safety_critical: "Safety Critical",
-}
+const POLL_INTERVAL_MS = 15_000
 
-function toDateTimeLocal(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
+const supabase = createClient()
 
-function formatDateTime(dateString: string): string {
-  try {
-    return new Date(dateString).toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  } catch {
-    return dateString
-  }
-}
+const TOUCH_TARGET = "min-h-[44px] min-w-[44px]"
 
-function formatDuration(mins: number): string {
-  if (mins >= 60) {
-    const h = Math.floor(mins / 60)
-    const m = mins % 60
-    return `${h}h ${m}m`
-  }
-  return `${mins} min`
-}
-
-function getStatusBadge(status: string) {
-  return (
-    STATUS_CONFIG[status] ?? {
-      label: status.charAt(0).toUpperCase() + status.slice(1),
-      className:
-        "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-    }
+export default function FieldPage() {
+  const [approved, setApproved] = useState<BlockRequestRow[]>([])
+  const [inProgress, setInProgress] = useState<BlockRequestRow[]>([])
+  const [completed, setCompleted] = useState<BlockRequestRow[]>([])
+  const [logsByRequest, setLogsByRequest] = useState<Map<string, ExecutionLog>>(
+    new Map(),
   )
-}
 
-function getSegmentName(
-  id: number | null | undefined,
-  segments: Segment[],
-  stations: Station[],
-): string {
-  if (id == null) return "—"
-  const seg = segments.find((s) => s.id === id)
-  if (!seg) return String(id)
-  const from = stations.find((s) => s.id === seg.from_station_id)
-  const to = stations.find((s) => s.id === seg.to_station_id)
-  return `${from?.name ?? seg.from_station_id} → ${to?.name ?? seg.to_station_id}`
-}
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [actingId, setActingId] = useState<string | null>(null)
 
-function formatVariance(mins: number): string {
-  if (mins === 0) return "0 min (on time)"
-  const sign = mins > 0 ? "+" : ""
-  return `${sign}${mins} min ${mins > 0 ? "over" : "under"}`
-}
-
-interface LogExecutionDialogProps {
-  request: BlockRequest
-  segmentName: string
-  workTypeLabel: string
-  safetyLabel: string
-  onLogged: () => void
-}
-
-function LogExecutionDialog({
-  request,
-  segmentName,
-  workTypeLabel,
-  safetyLabel,
-       onLogged,
-}: LogExecutionDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [beforeImage, setBeforeImage] = useState<File | null>(null)
-  const [afterImage, setAfterImage] = useState<File | null>(null)
-  const [uploadProgress, setUploadProgress] = useState<{
-    before: number | null
-    after: number | null
-  }>({ before: null, after: null })
-  const [actualStart, setActualStart] = useState<string>(
-    () =>
-      request.requested_start
-        ? toDateTimeLocal(new Date(request.requested_start))
-        : toDateTimeLocal(new Date()),
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [completeTarget, setCompleteTarget] = useState<BlockRequestRow | null>(
+    null,
   )
-  const [actualEnd, setActualEnd] = useState<string>(() => {
-    const start = request.requested_start
-      ? new Date(request.requested_start)
-      : new Date()
-    start.setMinutes(start.getMinutes() + request.requested_duration_mins)
-    return toDateTimeLocal(start)
-  })
-  const [geoLat, setGeoLat] = useState<string>("")
-  const [geoLng, setGeoLng] = useState<string>("")
+  const [beforeFile, setBeforeFile] = useState<File | null>(null)
+  const [afterFile, setAfterFile] = useState<File | null>(null)
+  const [actualEnd, setActualEnd] = useState("")
+  const [lat, setLat] = useState("")
+  const [lng, setLng] = useState("")
   const [locating, setLocating] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const uploadImage = async (
-    file: File,
-    onProgress: (pct: number) => void,
-  ): Promise<string | null> => {
-    const supabase = createClient()
-    const fileName = `${request.id}_${Date.now()}_${file.name}`
-    const { error } = await supabase.storage
-      .from("execution-images")
-      .upload(fileName, file, {
-        upsert: false,
-        onUploadProgress: (event: { loaded: number; total: number }) => {
-          if (event.total > 0) {
-            onProgress(Math.round((event.loaded / event.total) * 100))
-          }
-        },
-      } as any)
-
-    if (error) {
-      console.error("Upload error:", error)
-      onProgress(0)
-      return null
-    }
-
-    const { data: publicUrlData } = supabase.storage
-      .from("execution-images")
-      .getPublicUrl(fileName)
-
-    return publicUrlData?.publicUrl ?? null
-  }
-
-  const handleUseMyLocation = () => {
-    if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser")
-      return
-    }
-
-    setLocating(true)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGeoLat(String(pos.coords.latitude))
-        setGeoLng(String(pos.coords.longitude))
-        setLocating(false)
-        toast.success("Location captured")
-      },
-      (err) => {
-        setLocating(false)
-        if (err.code === err.PERMISSION_DENIED) {
-          toast.error("Location permission denied. Enter coordinates manually.")
-        } else {
-          toast.error("Could not get location. Enter coordinates manually.")
-        }
-      },
-      { enableHighAccuracy: true, timeout: 10000 },
-    )
-  }
-
-  const handleSubmit = async () => {
-    if (!beforeImage || !afterImage) {
-      toast.error("Both before and after images are required")
-      return
-    }
-
-    if (!actualStart || !actualEnd) {
-      toast.error("Please provide actual start and end times")
-      return
-    }
-
-    const start = new Date(`${actualStart}:00`)
-    const end = new Date(`${actualEnd}:00`)
-
-    if (end <= start) {
-      toast.error("Actual end must be after actual start")
-      return
-    }
-
-    setSubmitting(true)
-    setUploadProgress({ before: null, after: null })
-
-    try {
-      const beforeUrl = await uploadImage(beforeImage, (pct) =>
-        setUploadProgress((p) => ({ ...p, before: pct })),
-      )
-      const afterUrl = await uploadImage(afterImage, (pct) =>
-        setUploadProgress((p) => ({ ...p, after: pct })),
-      )
-
-      if (!beforeUrl || !afterUrl) {
-        throw new Error("Failed to upload one or both images")
-      }
-      setUploadProgress({ before: null, after: null })
-
-      const supabase = createClient()
-
-      const { error: logError } = await supabase.from("execution_logs").insert({
-        block_request_id: request.id,
-        before_image_url: beforeUrl,
-        after_image_url: afterUrl,
-        actual_start: start.toISOString(),
-        actual_end: end.toISOString(),
-        geo_lat: geoLat ? Number(geoLat) : null,
-        geo_lng: geoLng ? Number(geoLng) : null,
-      })
-
-      if (logError) throw logError
-
-      const { error: updateError } = await supabase
-        .from("block_requests")
-        .update({ status: "executed" })
-        .eq("id", request.id)
-
-      if (updateError) throw updateError
-
-      toast.success("Execution logged successfully")
-      onLogged()
-      setOpen(false)
-    } catch (err) {
-      toast.error(
-        `Failed to log execution: ${err instanceof Error ? err.message : String(err)}`,
-      )
-    } finally {
-      setSubmitting(false)
-      setUploadProgress({ before: null, after: null })
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
-          Log Execution
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Log Execution</DialogTitle>
-          <DialogDescription>
-            <div className="space-y-1">
-              <div>
-                <span className="font-medium">{segmentName}</span>
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {workTypeLabel} work &middot; {safetyLabel} &middot; Requested
-                start: {formatDateTime(request.requested_start)}
-              </div>
-            </div>
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-          <div className="space-y-2">
-            <label
-              htmlFor="before-image"
-              className="text-sm font-medium leading-none"
-            >
-              Before Image
-            </label>
-            <Input
-              id="before-image"
-              type="file"
-              accept="image/*"
-              onChange={(e) => setBeforeImage(e.target.files?.[0] ?? null)}
-            />
-            {uploadProgress.before != null && (
-              <div className="space-y-1 pt-1">
-                <Progress value={uploadProgress.before} className="h-2" />
-                <span className="text-xs text-muted-foreground">
-                  Uploading before image: {uploadProgress.before}%
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="after-image"
-              className="text-sm font-medium leading-none"
-            >
-              After Image
-            </label>
-            <Input
-              id="after-image"
-              type="file"
-              accept="image/*"
-              onChange={(e) => setAfterImage(e.target.files?.[0] ?? null)}
-            />
-            {uploadProgress.after != null && (
-              <div className="space-y-1 pt-1">
-                <Progress value={uploadProgress.after} className="h-2" />
-                <span className="text-xs text-muted-foreground">
-                  Uploading after image: {uploadProgress.after}%
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="actual-start"
-              className="text-sm font-medium leading-none"
-            >
-              Actual Start
-            </label>
-            <Input
-              id="actual-start"
-              type="datetime-local"
-              value={actualStart}
-              onChange={(e) => setActualStart(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="actual-end"
-              className="text-sm font-medium leading-none"
-            >
-              Actual End
-            </label>
-            <Input
-              id="actual-end"
-              type="datetime-local"
-              value={actualEnd}
-              onChange={(e) => setActualEnd(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2 md:col-span-2">
-            <label className="text-sm font-medium leading-none">
-              Location
-            </label>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleUseMyLocation}
-                disabled={locating}
-              >
-                {locating ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <MapPin className="h-4 w-4 mr-2" />
-                )}
-                {locating ? "Locating..." : "Use My Location"}
-              </Button>
-              <span className="text-xs text-muted-foreground self-center">
-                (auto-fills lat/lng below)
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              <div className="space-y-1">
-                <label
-                  htmlFor="geo-lat"
-                  className="text-xs text-muted-foreground"
-                >
-                  Latitude
-                </label>
-                <Input
-                  id="geo-lat"
-                  type="number"
-                  step="any"
-                  placeholder="e.g. 40.7128"
-                  value={geoLat}
-                  onChange={(e) => setGeoLat(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="geo-lng"
-                  className="text-xs text-muted-foreground"
-                >
-                  Longitude
-                </label>
-                <Input
-                  id="geo-lng"
-                  type="number"
-                  step="any"
-                  placeholder="e.g. -74.0060"
-                  value={geoLng}
-                  onChange={(e) => setGeoLng(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {(geoLat && geoLng) || submitting ? (
-              <div className="space-y-1 mt-2">
-                <MapPreview
-                  lat={geoLat ? Number(geoLat) : null}
-                  lng={geoLng ? Number(geoLng) : null}
-                  className="h-40 w-full"
-                />
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline" disabled={submitting}>
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4 mr-2" />
-                Save Execution Log
-              </>
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-interface PendingTableProps {
-  requests: BlockRequest[]
-  segments: Segment[]
-  stations: Station[]
-  loading: boolean
-  onLogged: () => void
-}
-
-function PendingTable({
-  requests,
-  segments,
-  stations,
-  loading,
-  onLogged,
-}: PendingTableProps) {
-  if (loading) {
-    return (
-      <div className="space-y-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-12 w-full" />
-        ))}
-      </div>
-    )
-  }
-
-  if (requests.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <ClipboardList className="h-12 w-12 text-muted-foreground/50 mb-4" />
-        <h3 className="text-lg font-medium">No approved requests</h3>
-        <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-          Approved block requests will appear here for execution logging.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Segment</TableHead>
-            <TableHead>Work Type</TableHead>
-            <TableHead>Requested Start</TableHead>
-            <TableHead>Duration</TableHead>
-            <TableHead>Safety</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {requests.map((request, index) => {
-            const segmentName = getSegmentName(
-              request.segment_id,
-              segments,
-              stations,
-            )
-            const workTypeLabel =
-              workTypeLabels[request.work_type] ?? request.work_type
-            const safetyLabel =
-              safetyLabels[request.safety_criticality] ??
-              request.safety_criticality
-            const badge = getStatusBadge(request.status)
-            return (
-              <TableRow
-                key={request.id}
-                className="animate-fade-in"
-                style={{ animationDelay: `${Math.min(index * 40, 400)}ms` }}
-              >
-                <TableCell>{segmentName}</TableCell>
-                <TableCell>{workTypeLabel}</TableCell>
-                <TableCell>
-                  {formatDateTime(request.requested_start)}
-                </TableCell>
-                <TableCell>
-                  {formatDuration(request.requested_duration_mins)}
-                </TableCell>
-                <TableCell>{safetyLabel}</TableCell>
-                <TableCell>
-                  <Badge className={badge.className}>{badge.label}</Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <LogExecutionDialog
-                    request={request}
-                    segmentName={segmentName}
-                    workTypeLabel={workTypeLabel}
-                    safetyLabel={safetyLabel}
-                    onLogged={onLogged}
-                  />
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-    </div>
-  )
-}
-
-interface CompletedTableProps {
-  logs: ExecutionLog[]
-  requests: BlockRequest[]
-  segments: Segment[]
-  stations: Station[]
-  loading: boolean
-}
-
-function CompletedTable({
-  logs,
-  requests,
-  segments,
-  stations,
-  loading,
-}: CompletedTableProps) {
-  const reqById = new Map(requests.map((r) => [r.id, r]))
-
-  if (loading) {
-    return (
-      <div className="space-y-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-12 w-full" />
-        ))}
-      </div>
-    )
-  }
-
-  if (logs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <ClipboardList className="h-12 w-12 text-muted-foreground/50 mb-4" />
-        <h3 className="text-lg font-medium">No completed work yet</h3>
-        <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-          Executed block requests will be listed here once logged.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Segment</TableHead>
-            <TableHead>Requested Start</TableHead>
-            <TableHead>Actual Start</TableHead>
-            <TableHead>Actual End</TableHead>
-            <TableHead>Duration</TableHead>
-            <TableHead>Variance</TableHead>
-            <TableHead>Images</TableHead>
-            <TableHead>Location</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {logs.map((log) => {
-            const request = reqById.get(log.block_request_id ?? "")
-            const segmentName =
-              request != null
-                ? getSegmentName(request.segment_id, segments, stations)
-                : "—"
-
-            let varianceMins: number | null = null
-            if (
-              log.actual_start != null &&
-              log.actual_end != null &&
-              request != null
-            ) {
-              const actualMs =
-                new Date(log.actual_end).getTime() -
-                new Date(log.actual_start).getTime()
-              const actualMins = Math.round(actualMs / 60000)
-              varianceMins = actualMins - request.requested_duration_mins
-            }
-
-            const varianceLabel =
-              varianceMins != null ? formatVariance(varianceMins) : "—"
-            const varianceColor =
-              varianceMins != null && varianceMins > 0
-                ? "text-destructive"
-                : "text-success"
-
-            return (
-              <TableRow key={log.id}>
-                <TableCell>{segmentName}</TableCell>
-                <TableCell>
-                  {request != null
-                    ? formatDateTime(request.requested_start)
-                    : "—"}
-                </TableCell>
-                <TableCell>
-                  {log.actual_start != null
-                    ? formatDateTime(log.actual_start)
-                    : "—"}
-                </TableCell>
-                <TableCell>
-                  {log.actual_end != null
-                    ? formatDateTime(log.actual_end)
-                    : "—"}
-                </TableCell>
-                <TableCell>
-                  {varianceMins != null
-                    ? formatDuration(
-                        Math.round(
-                          (new Date(log.actual_end!).getTime() -
-                            new Date(log.actual_start!).getTime()) /
-                            60000,
-                        ),
-                      )
-                    : "—"}
-                </TableCell>
-                <TableCell className={varianceColor}>
-                  {varianceLabel}
-                </TableCell>
-                <TableCell>
-                  {log.before_image_url != null ||
-                  log.after_image_url != null ? (
-                    <div className="flex gap-1">
-                      {log.before_image_url != null && (
-                        <img
-                          src={log.before_image_url}
-                          alt="Before"
-                          className="h-10 w-10 object-cover rounded border"
-                        />
-                      )}
-                      {log.after_image_url != null && (
-                        <img
-                          src={log.after_image_url}
-                          alt="After"
-                          className="h-10 w-10 object-cover rounded border"
-                        />
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">
-                      No images
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {log.geo_lat != null && log.geo_lng != null ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs">
-                        {log.geo_lat.toFixed(4)}, {log.geo_lng.toFixed(4)}
-                      </span>
-                      <MapPreview
-                        lat={log.geo_lat}
-                        lng={log.geo_lng}
-                        className="h-12 w-12 rounded"
-                      />
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">
-                      Not captured
-                    </span>
-                  )}
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-    </div>
-  )
-}
-
-export default function FieldPage() {
-  const [approvedRequests, setApprovedRequests] = useState<BlockRequest[]>([])
-  const [executedRequests, setExecutedRequests] = useState<BlockRequest[]>([])
-  const [logs, setLogs] = useState<ExecutionLog[]>([])
-  const [segments, setSegments] = useState<Segment[]>([])
-  const [stations, setStations] = useState<Station[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const fetchPending = async () => {
-    const supabase = createClient()
-    const { data, error } = await supabase
+  const fetchAll = async () => {
+    setLoading(true)
+    const { data: reqData, error: reqErr } = await supabase
       .from("block_requests")
-      .select("*")
-      .eq("status", "approved")
-      .order("requested_start", { ascending: true })
-
-    if (error) {
-      toast.error("Failed to load approved requests")
-      return
-    }
-    setApprovedRequests((data ?? []) as BlockRequest[])
-  }
-
-  const fetchCompleted = async () => {
-    const supabase = createClient()
-    const { data, error } = await supabase
+      .select("*, segments(name)")
+      .order("created_at", { ascending: false })
+    const { data: logData, error: logErr } = await supabase
       .from("execution_logs")
       .select("*")
-      .order("actual_start", { ascending: false })
+      .order("created_at", { ascending: false })
 
-    if (error) {
-      toast.error("Failed to load completed work")
-      return
+    if (reqErr) toast.error("Failed to load requests", { description: reqErr.message })
+    if (logErr) toast.error("Failed to load work logs", { description: logErr.message })
+
+    const requests = (reqData ?? []) as BlockRequestRow[]
+    setApproved(requests.filter((r) => r.status === "approved"))
+    setInProgress(requests.filter((r) => r.status === "in_progress"))
+    setCompleted(requests.filter((r) => r.status === "executed"))
+
+    const byRequest = new Map<string, ExecutionLog>()
+    for (const log of (logData ?? []) as ExecutionLog[]) {
+      if (log.block_request_id && !byRequest.has(log.block_request_id)) {
+        byRequest.set(log.block_request_id, log)
+      }
     }
-    setLogs((data ?? []) as ExecutionLog[])
-  }
-
-  const fetchExecutedRequests = async () => {
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from("block_requests")
-      .select("*")
-      .eq("status", "executed")
-
-    if (error) {
-      toast.error("Failed to load executed requests")
-      return
-    }
-    setExecutedRequests((data ?? []) as BlockRequest[])
+    setLogsByRequest(byRequest)
+    setLoading(false)
   }
 
   useEffect(() => {
-    const fetchData = async () => {
-      const supabase = createClient()
-
-      const { data: segData } = await supabase
-        .from("segments")
-        .select("id, name, from_station_id, to_station_id")
-        .order("name")
-      const { data: stnData } = await supabase
-        .from("stations")
-        .select("id, name")
-
-      setSegments(segData ?? [])
-      setStations((stnData ?? []) as Station[])
-
-      await Promise.all([
-        fetchPending(),
-        fetchCompleted(),
-        fetchExecutedRequests(),
-      ])
-      setLoading(false)
-    }
-
-    void fetchData()
+    fetchAll()
+    const id = setInterval(fetchAll, POLL_INTERVAL_MS)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleLogged = () => {
-    void fetchPending()
-    void fetchCompleted()
-    void fetchExecutedRequests()
+  const handleStart = async (req: BlockRequestRow) => {
+    setActingId(req.id)
+    try {
+      const { error: logErr } = await supabase.from("execution_logs").insert({
+        block_request_id: req.id,
+        actual_start: new Date().toISOString(),
+        status: "in_progress" as const,
+      })
+      if (logErr) throw logErr
+
+      const { error: updErr } = await supabase
+        .from("block_requests")
+        .update({ status: "in_progress" as BlockRequestStatus })
+        .eq("id", req.id)
+      if (updErr) throw updErr
+
+      toast.success("Work started")
+      setApproved((prev) => prev.filter((r) => r.id !== req.id))
+      setInProgress((prev) => [req, ...prev])
+      const syntheticLog: ExecutionLog = {
+        id: "",
+        block_request_id: req.id,
+        before_image_url: null,
+        after_image_url: null,
+        actual_start: new Date().toISOString(),
+        actual_end: null,
+        geo_lat: null,
+        geo_lng: null,
+        status: "in_progress",
+        verified: false,
+        created_at: new Date().toISOString(),
+      }
+      setLogsByRequest((prev) => new Map(prev).set(req.id, syntheticLog))
+    } catch (e: any) {
+      toast.error("Could not start work", { description: e.message })
+    } finally {
+      setActingId(null)
+    }
   }
 
+  const handleUseLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by this browser")
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLat(String(pos.coords.latitude))
+        setLng(String(pos.coords.longitude))
+        toast.success("Location captured")
+        setLocating(false)
+      },
+      (err) => {
+        toast.error("Could not capture location", {
+          description: err?.message ?? "Please enter coordinates manually",
+        })
+        setLocating(false)
+      },
+    )
+  }
+
+  const uploadImage = async (file: File): Promise<string> => {
+    const fileName = `${Date.now()}-${file.name}`
+    const { error } = await supabase.storage
+      .from("execution-images")
+      .upload(fileName, file)
+    if (error) throw error
+    const { data } = supabase.storage.from("execution-images").getPublicUrl(fileName)
+    return data.publicUrl
+  }
+
+  const openComplete = (req: BlockRequestRow) => {
+    setCompleteTarget(req)
+    setActualEnd(new Date().toISOString().slice(0, 16))
+    setBeforeFile(null)
+    setAfterFile(null)
+    setLat("")
+    setLng("")
+    setDialogOpen(true)
+  }
+
+  const handleSubmitComplete = async () => {
+    if (!completeTarget) return
+    setSubmitting(true)
+    try {
+      let beforeUrl = ""
+      let afterUrl = ""
+      if (beforeFile) beforeUrl = await uploadImage(beforeFile)
+      if (afterFile) afterUrl = await uploadImage(afterFile)
+
+      const endTime = new Date(actualEnd).toISOString()
+
+      const { data: logs, error: findErr } = await supabase
+        .from("execution_logs")
+        .select("*")
+        .eq("block_request_id", completeTarget.id)
+        .eq("status", "in_progress")
+        .order("created_at", { ascending: false })
+        .limit(1)
+      if (findErr) throw findErr
+
+      const log = logs?.[0]
+      if (log) {
+        const { error: updErr } = await supabase
+          .from("execution_logs")
+          .update({
+            before_image_url: beforeUrl,
+            after_image_url: afterUrl,
+            actual_end: endTime,
+            geo_lat: lat ? parseFloat(lat) : null,
+            geo_lng: lng ? parseFloat(lng) : null,
+            status: "completed" as const,
+          })
+          .eq("id", log.id)
+        if (updErr) throw updErr
+      }
+
+      const { error: reqErr } = await supabase
+        .from("block_requests")
+        .update({ status: "executed" as BlockRequestStatus })
+        .eq("id", completeTarget.id)
+      if (reqErr) throw reqErr
+
+      toast.success("Work completed — logged for AI learning.")
+
+      fetch("/api/update-stats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          segment_id: completeTarget.segment_id,
+          work_type: completeTarget.work_type,
+        }),
+      }).catch((err) => console.error("update-stats error:", err))
+
+      setDialogOpen(false)
+      setCompleteTarget(null)
+      setInProgress((prev) => prev.filter((r) => r.id !== completeTarget.id))
+      await fetchAll()
+    } catch (e: any) {
+      toast.error("Could not complete work", { description: e.message })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const computeVariance = (
+    log: ExecutionLog | undefined,
+    requested: number,
+  ): number | null => {
+    if (!log?.actual_start || !log?.actual_end || !requested) return null
+    const mins =
+      (Date.parse(log.actual_end) - Date.parse(log.actual_start)) / 60000
+    return Math.round(mins - requested)
+  }
+
+  const segmentLabel = (r: BlockRequestRow) =>
+    r.segments?.name ?? `Segment #${r.segment_id ?? "—"}`
+
+  const shortId = (id: string) => id.slice(0, 8)
+
+  const varianceBadge = (variance: number | null) => {
+    if (variance === null) {
+      return (
+        <span className="text-xs text-muted-foreground">—</span>
+      )
+    }
+    if (variance < 0) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+          Saved {Math.abs(variance)} min
+        </span>
+      )
+    }
+    if (variance > 0) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+          Over by {variance} min
+        </span>
+      )
+    }
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+        On time
+      </span>
+    )
+  }
+
+  const ImageThumb = ({ url }: { url: string | null }) =>
+    url ? (
+      <a href={url} target="_blank" rel="noreferrer" className="inline-block">
+        <img
+          src={url}
+          alt="work site"
+          className="h-10 w-10 rounded object-cover ring-1 ring-border"
+        />
+      </a>
+    ) : (
+      <span className="text-xs text-muted-foreground">—</span>
+    )
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Field</h1>
-        <p className="text-muted-foreground">
-          Execution logs and field operations.
-        </p>
+    <div className="space-y-8 bg-white min-h-screen">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">
+            Field Execution Dashboard
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Start approved work, complete it with site photos and a location,
+            and review execution performance.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setRefreshing(true)
+            fetchAll().finally(() => setRefreshing(false))
+          }}
+          disabled={refreshing}
+          className={cn(TOUCH_TARGET)}
+        >
+          {refreshing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Refresh
+        </Button>
       </div>
 
+      {/* Section 1 — Approved */}
       <Card>
         <CardHeader>
-          <CardTitle>Approved Requests</CardTitle>
+          <CardTitle>Approved — Ready to Start</CardTitle>
           <CardDescription>
-            Block requests awaiting execution, sorted by requested start time.
+            Block requests cleared for field work. Tap Start Work to begin.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <PendingTable
-            requests={approvedRequests}
-            segments={segments}
-            stations={stations}
-            loading={loading}
-            onLogged={handleLogged}
-          />
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Segment</TableHead>
+                  <TableHead>Work Type</TableHead>
+                  <TableHead>Requested Start</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading
+                  ? Array.from({ length: 6 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <Skeleton className="h-4 w-10" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-24" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-20" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-28" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-12" />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Skeleton className="h-9 w-28" />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  : approved.length === 0
+                    ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                          No approved requests waiting.
+                        </TableCell>
+                      </TableRow>
+                    )
+                    : approved.map((r) => (
+                        <TableRow key={r.id}>
+                          <TableCell className="font-mono">
+                            {shortId(r.id)}
+                          </TableCell>
+                          <TableCell>{segmentLabel(r)}</TableCell>
+                          <TableCell className="capitalize">{r.work_type}</TableCell>
+                          <TableCell>
+                            {new Date(r.requested_start).toLocaleString(
+                              undefined,
+                              { dateStyle: "short", timeStyle: "short" },
+                            )}
+                          </TableCell>
+                          <TableCell>{r.requested_duration_mins} m</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              onClick={() => handleStart(r)}
+                              disabled={actingId === r.id}
+                              className={cn(
+                                "bg-primary hover:bg-primary/90 text-primary-foreground",
+                                TOUCH_TARGET,
+                              )}
+                            >
+                              {actingId === r.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <PlayCircle className="h-4 w-4" />
+                              )}
+                              Start Work
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
+      {/* Section 2 — In Progress */}
+      <Card className="border-2 border-primary">
+        <CardHeader>
+          <CardTitle className="text-primary">In Progress</CardTitle>
+          <CardDescription>
+            Work currently being performed by the crew. Complete it with
+            before/after photos.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Segment</TableHead>
+                  <TableHead>Work Type</TableHead>
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="h-3 w-3" /> Started
+                    </span>
+                  </TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {inProgress.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="py-8 text-center text-sm text-muted-foreground"
+                    >
+                      No work in progress.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  inProgress.map((r) => {
+                    const log = logsByRequest.get(r.id)
+                    const started = log?.actual_start
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-mono">
+                          {shortId(r.id)}
+                        </TableCell>
+                        <TableCell>{segmentLabel(r)}</TableCell>
+                        <TableCell className="capitalize">{r.work_type}</TableCell>
+                        <TableCell>
+                          {started
+                            ? new Date(started).toLocaleString(undefined, {
+                                dateStyle: "short",
+                                timeStyle: "short",
+                              })
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            onClick={() => openComplete(r)}
+                            className={cn(
+                              "bg-success hover:bg-success/90 text-success-foreground",
+                              TOUCH_TARGET,
+                            )}
+                          >
+                            Complete Work
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Section 3 — Completed */}
       <Card>
         <CardHeader>
           <CardTitle>Completed Work</CardTitle>
           <CardDescription>
-            Executed block requests with duration variance and image previews.
+            Finished requests and their schedule variance against the requested
+            duration.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <CompletedTable
-            logs={logs}
-            requests={executedRequests}
-            segments={segments}
-            stations={stations}
-            loading={loading}
-          />
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Segment</TableHead>
+                  <TableHead>Work Type</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Variance</TableHead>
+                  <TableHead>Before</TableHead>
+                  <TableHead>After</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading
+                  ? Array.from({ length: 6 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <Skeleton className="h-4 w-10" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-24" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-20" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-12" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-5 w-16" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-10 w-10 rounded" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-10 w-10 rounded" />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  : completed.length === 0
+                    ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={7}
+                          className="py-8 text-center text-sm text-muted-foreground"
+                        >
+                          No completed work yet.
+                        </TableCell>
+                      </TableRow>
+                    )
+                    : completed.map((r) => {
+                        const log = logsByRequest.get(r.id)
+                        const variance = computeVariance(
+                          log,
+                          r.requested_duration_mins,
+                        )
+                        return (
+                          <TableRow key={r.id}>
+                            <TableCell className="font-mono">
+                              {shortId(r.id)}
+                            </TableCell>
+                            <TableCell>{segmentLabel(r)}</TableCell>
+                            <TableCell className="capitalize">
+                              {r.work_type}
+                            </TableCell>
+                            <TableCell>
+                              {r.requested_duration_mins} m
+                            </TableCell>
+                            <TableCell>{varianceBadge(variance)}</TableCell>
+                            <TableCell>
+                              <ImageThumb url={log?.before_image_url ?? null} />
+                            </TableCell>
+                            <TableCell>
+                              <ImageThumb url={log?.after_image_url ?? null} />
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Complete Work dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="w-[95vw] max-w-lg bg-white">
+          <DialogHeader>
+            <DialogTitle>Complete Work</DialogTitle>
+            <DialogDescription>
+              {completeTarget
+                ? `Recording completion for ${segmentLabel(completeTarget)}. Upload site photos, set the end time, and capture a location.`
+                : "Complete work details"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 overflow-y-auto max-h-[60vh]">
+            <div className="space-y-1.5">
+              <label
+                className="text-sm font-medium leading-none"
+                htmlFor="before-image"
+              >
+                Site Before Work
+              </label>
+              <Input
+                id="before-image"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => setBeforeFile(e.target.files?.[0] ?? null)}
+              />
+              {beforeFile && (
+                <p className="text-xs text-muted-foreground">
+                  Selected: {beforeFile.name}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                className="text-sm font-medium leading-none"
+                htmlFor="after-image"
+              >
+                Site After Work
+              </label>
+              <Input
+                id="after-image"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => setAfterFile(e.target.files?.[0] ?? null)}
+              />
+              {afterFile && (
+                <p className="text-xs text-muted-foreground">
+                  Selected: {afterFile.name}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                className="text-sm font-medium leading-none"
+                htmlFor="actual-end"
+              >
+                Actual End Time
+              </label>
+              <Input
+                id="actual-end"
+                type="datetime-local"
+                value={actualEnd}
+                onChange={(e) => setActualEnd(e.target.value)}
+                className={cn(TOUCH_TARGET, "h-11")}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                className="text-sm font-medium leading-none"
+                htmlFor="geo-lat"
+              >
+                Location (editable)
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  id="geo-lat"
+                  type="number"
+                  step="any"
+                  placeholder="Latitude"
+                  value={lat}
+                  onChange={(e) => setLat(e.target.value)}
+                  className={cn(TOUCH_TARGET, "h-11")}
+                />
+                <Input
+                  id="geo-lng"
+                  type="number"
+                  step="any"
+                  placeholder="Longitude"
+                  value={lng}
+                  onChange={(e) => setLng(e.target.value)}
+                  className={cn(TOUCH_TARGET, "h-11")}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleUseLocation}
+                disabled={locating}
+                className={cn("w-full", TOUCH_TARGET)}
+              >
+                {locating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MapPin className="h-4 w-4" />
+                )}
+                Use My Location
+              </Button>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <DialogClose asChild>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={submitting}
+                className={cn(TOUCH_TARGET)}
+              >
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              onClick={handleSubmitComplete}
+              disabled={submitting || !completeTarget}
+              className={cn(
+                "bg-success hover:bg-success/90 text-success-foreground",
+                TOUCH_TARGET,
+              )}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Submitting…
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4" />
+                  Submit Completion
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
