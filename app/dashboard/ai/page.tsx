@@ -1,14 +1,15 @@
 "use client"
 
 import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
 import { ChevronDown, ChevronUp, Loader2, RefreshCw, ShieldAlert } from "lucide-react"
 import { cn } from "@/lib/utils"
+import type { PlanOption } from "@/lib/types"
 
 type BlockRequestRow = {
   id: string
@@ -23,19 +24,6 @@ type BlockRequestRow = {
   priority_score: number | null
   delay_risk: string | null
   created_at: string
-}
-
-type PlanOption = {
-  id: string
-  block_request_id: string
-  option_label: string
-  adjusted_start: string
-  adjusted_duration_mins: number
-  priority_score: number | null
-  delay_risk: string | null
-  explanation: string | null
-  is_recommended: boolean
-  what_if_note: string | null
 }
 
 const supabase = createClient()
@@ -85,45 +73,47 @@ function formatDateTime(value: string) {
 export default function AiPage() {
   const [requests, setRequests] = useState<BlockRequestRow[]>([])
   const [optionsByRequest, setOptionsByRequest] = useState<Record<string, PlanOption[]>>({})
-  const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [loading, setLoading] = useState(true)
   const [reprocessing, setReprocessing] = useState<Record<string, boolean>>({})
 
   const loadAll = async () => {
     setLoading(true)
-    const { data: reqData, error: reqError } = await supabase
+    const { data, error } = await supabase
       .from("block_requests")
       .select("*")
       .in("status", ["scored", "safety_blocked"])
-      .order("created_at", { ascending: false })
+      .order("priority_score", { ascending: false, nulls: "last" })
 
-    if (reqError) {
+    if (error) {
       toast.error("Failed to load block requests")
       setRequests([])
-      setLoading(false)
-      return
-    }
+      setOptionsByRequest({})
+    } else {
+      const rows = (data ?? []) as BlockRequestRow[]
+      setRequests(rows)
 
-    const rows = (reqData ?? []) as BlockRequestRow[]
-    setRequests(rows)
+      if (rows.length > 0) {
+        const { data: optData, error: optError } = await supabase
+          .from("block_plan_options")
+          .select("*")
+          .in(
+            "block_request_id",
+            rows.map((r) => r.id)
+          )
 
-    if (rows.length > 0) {
-      const ids = rows.map((r) => r.id)
-      const { data: optData, error: optError } = await supabase
-        .from("block_plan_options")
-        .select("*")
-        .in("block_request_id", ids)
-
-      if (!optError) {
-        const grouped: Record<string, PlanOption[]> = {}
-        for (const opt of (optData ?? []) as PlanOption[]) {
-          if (!grouped[opt.block_request_id]) grouped[opt.block_request_id] = []
-          grouped[opt.block_request_id].push(opt)
+        if (optError) {
+          toast.error("Failed to load plan options")
+        } else {
+          const grouped: Record<string, PlanOption[]> = {}
+          for (const opt of (optData ?? []) as PlanOption[]) {
+            if (!grouped[opt.block_request_id]) grouped[opt.block_request_id] = []
+            grouped[opt.block_request_id].push(opt)
+          }
+          setOptionsByRequest(grouped)
         }
-        setOptionsByRequest(grouped)
       }
     }
-
     setLoading(false)
   }
 
@@ -131,17 +121,13 @@ export default function AiPage() {
     loadAll()
   }, [])
 
-  const toggleExpanded = (id: string) => {
-    setExpanded((p) => ({ ...p, [id]: !p[id] }))
-  }
-
   const handleReprocess = async (id: string) => {
     setReprocessing((p) => ({ ...p, [id]: true }))
     try {
       const res = await fetch("/api/auto-process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId: id, block_request_id: id }),
+        body: JSON.stringify({ block_request_id: id }),
       })
       const json = await res.json()
       if (!res.ok || json.error) {
@@ -158,15 +144,21 @@ export default function AiPage() {
   }
 
   const safetyBlocked = requests.filter((r) => r.status === "safety_blocked")
-  const scored = [...requests.filter((r) => r.status === "scored")].sort(
-    (a, b) => (b.priority_score ?? -Infinity) - (a.priority_score ?? -Infinity)
-  )
+  const scored = requests
+    .filter((r) => r.status === "scored")
+    .sort(
+      (a, b) => (b.priority_score ?? -Infinity) - (a.priority_score ?? -Infinity)
+    )
+
+  const toggleExpanded = (id: string) => {
+    setExpanded((p) => ({ ...p, [id]: !p[id] }))
+  }
 
   const renderOptionCard = (opt: PlanOption) => (
     <div
       key={opt.id}
       className={cn(
-        "flex-1 min-w-[220px] rounded-lg border p-4 space-y-2",
+        "rounded-lg border p-4 space-y-3",
         opt.is_recommended && "border-2 border-[#960DF2]"
       )}
     >
@@ -179,7 +171,8 @@ export default function AiPage() {
         )}
       </div>
       <div className="text-sm text-muted-foreground">
-        <span suppressHydrationWarning>{formatDateTime(opt.adjusted_start)}</span> · {opt.adjusted_duration_mins} min
+        <span suppressHydrationWarning>{formatDateTime(opt.adjusted_start)}</span> ·{" "}
+        {opt.adjusted_duration_mins ?? 0} min
       </div>
       <div className="flex items-center gap-2">
         <span className="text-lg font-bold text-primary">
@@ -203,25 +196,32 @@ export default function AiPage() {
   )
 
   const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blocked") => {
-    const options = optionsByRequest[row.id] ?? []
-    const isOpen = !!expanded[row.id]
     const isReprocessing = !!reprocessing[row.id]
 
     return (
       <Card
         key={row.id}
-        className={cn(variant === "safety_blocked" && "border-2 border-red-600/50")}
+        className={cn(
+          "flex flex-col gap-3",
+          variant === "safety_blocked" && "border-2 border-red-600/50"
+        )}
       >
         <CardContent className="pt-6 space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium">{row.work_type}</span>
-                <Badge variant="outline" className={safetyBadge(row.safety_criticality)}>
+                <Badge
+                  variant="outline"
+                  className={safetyBadge(row.safety_criticality)}
+                >
                   {row.safety_criticality}
                 </Badge>
                 {variant === "safety_blocked" && (
-                  <Badge variant="outline" className="text-red-700 dark:text-red-400 bg-red-500/10 border-red-600/20">
+                  <Badge
+                    variant="outline"
+                    className="text-red-700 dark:text-red-400 bg-red-500/10 border-red-600/20"
+                  >
                     <ShieldAlert className="h-3.5 w-3.5 mr-1" />
                     Safety blocked
                   </Badge>
@@ -236,7 +236,9 @@ export default function AiPage() {
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-               Requested start: <span suppressHydrationWarning>{formatDateTime(row.requested_start)}</span> · {row.requested_duration_mins} min
+                Requested start:{" "}
+                <span suppressHydrationWarning>{formatDateTime(row.requested_start)}</span>{" "}
+                · {row.requested_duration_mins} min
               </p>
             </div>
             {variant === "scored" && (
@@ -255,22 +257,6 @@ export default function AiPage() {
 
           <div className="flex items-center gap-2">
             <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => toggleExpanded(row.id)}
-              className="px-2"
-            >
-              {isOpen ? (
-                <>
-                  <ChevronUp className="h-4 w-4 mr-1" /> Hide plan options
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="h-4 w-4 mr-1" /> Show plan options ({options.length})
-                </>
-              )}
-            </Button>
-            <Button
               variant="outline"
               size="sm"
               onClick={() => handleReprocess(row.id)}
@@ -288,15 +274,33 @@ export default function AiPage() {
                 </>
               )}
             </Button>
+            {variant === "scored" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => toggleExpanded(row.id)}
+                className="px-2"
+              >
+                {expanded[row.id] ? (
+                  <>
+                    <ChevronUp className="h-4 w-4 mr-1" /> Hide plan options
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4 mr-1" /> Show plan options (3)
+                  </>
+                )}
+              </Button>
+            )}
           </div>
 
-          {isOpen && (
-            <div className="flex flex-wrap gap-3 pt-2 border-t">
-              {options.length > 0 ? (
-                options.map(renderOptionCard)
-              ) : (
-                <p className="text-sm text-muted-foreground">No plan options found.</p>
-              )}
+          {variant === "scored" && expanded[row.id] && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              {optionsByRequest[row.id]?.length
+                ? optionsByRequest[row.id]!.map(renderOptionCard)
+                : Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-40 w-full" />
+                  ))}
             </div>
           )}
         </CardContent>
@@ -321,7 +325,7 @@ export default function AiPage() {
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full" />
+            <Skeleton key={i} className="h-36 w-full" />
           ))}
         </div>
       ) : requests.length === 0 ? (
@@ -333,21 +337,25 @@ export default function AiPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-8">
           {safetyBlocked.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-sm font-semibold text-red-700 dark:text-red-400 flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4" />
                 Safety blocked
               </h2>
-              {safetyBlocked.map((row) => renderRequestCard(row, "safety_blocked"))}
+              <div className="space-y-3 border border-red-600/50 rounded-lg p-0.5">
+                {safetyBlocked.map((row) => renderRequestCard(row, "safety_blocked"))}
+              </div>
             </div>
           )}
 
           {scored.length > 0 && (
             <div className="space-y-3">
               {safetyBlocked.length > 0 && (
-                <h2 className="text-sm font-semibold text-muted-foreground">Scored requests</h2>
+                <h2 className="text-sm font-semibold text-muted-foreground">
+                  Scored requests
+                </h2>
               )}
               {scored.map((row) => renderRequestCard(row, "scored"))}
             </div>
