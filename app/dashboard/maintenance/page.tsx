@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -54,6 +55,8 @@ const SAFETY_OPTIONS = [
   { value: "urgent", label: "Urgent" },
   { value: "safety_critical", label: "Safety Critical" },
 ] as const
+
+const DEPARTMENT_OPTIONS = ["TMS", "TDMS", "SMMS"]
 
 const STATUS_CONFIG: Record<
   string,
@@ -153,6 +156,9 @@ export default function MaintenancePage() {
   )
   const [duration, setDuration] = useState<string>("")
   const [safetyCriticality, setSafetyCriticality] = useState<string>("")
+  const [department, setDepartment] = useState<string>("")
+  const [workDescription, setWorkDescription] = useState<string>("")
+  const [justification, setJustification] = useState<string>("")
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const [searchQuery, setSearchQuery] = useState<string>("")
@@ -228,6 +234,9 @@ export default function MaintenancePage() {
     setRequestedStart(toDateTimeLocal(new Date()))
     setDuration("")
     setSafetyCriticality("")
+    setDepartment("")
+    setWorkDescription("")
+    setJustification("")
     setErrors({})
   }
 
@@ -256,6 +265,13 @@ export default function MaintenancePage() {
       newErrors.duration = "Please enter a valid duration"
     if (!safetyCriticality)
       newErrors.safety = "Please select a safety level"
+    if (!department) newErrors.department = "Please select a department"
+    if (!workDescription || workDescription.length < 10)
+      newErrors.workDescription =
+        "Work description must be at least 10 characters"
+    if (!justification || justification.length < 10)
+      newErrors.justification =
+        "Justification must be at least 10 characters"
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -271,15 +287,19 @@ export default function MaintenancePage() {
     setIsSubmitting(true)
 
     const supabase = createClient()
-    const { error } = await supabase.from("block_requests").insert({
-      segment_id: Number(segmentId),
-      work_type: workType,
-      requested_start: `${requestedStart}:00`,
-      requested_duration_mins: Number(duration),
-      safety_criticality: safetyCriticality,
-      status: "submitted",
-      requested_by: user.id,
-    })
+    const { data: insertData, error } =
+      await supabase.from("block_requests").insert({
+        segment_id: Number(segmentId),
+        work_type: workType,
+        work_description: workDescription,
+        requested_start: `${requestedStart}:00`,
+        requested_duration_mins: Number(duration),
+        safety_criticality: safetyCriticality,
+        department: department || null,
+        justification: justification,
+        status: "submitted",
+        requested_by: user.id,
+      })
 
     if (error) {
       toast.error(`Failed to submit request: ${error.message}`)
@@ -287,7 +307,25 @@ export default function MaintenancePage() {
       return
     }
 
-    toast.success("Block request submitted successfully")
+    const newId = (insertData as Array<{ id: string }> | null)?.[0]?.id
+    if (newId) {
+      void (async () => {
+        try {
+          await fetch("/api/auto-process", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              requestId: newId,
+              block_request_id: newId,
+            }),
+          })
+        } catch (err) {
+          console.error("Auto-process request failed:", err)
+        }
+      })()
+    }
+
+    toast.success("Request submitted — AI is scoring it now.")
     resetForm()
     void fetchRequests()
     setIsSubmitting(false)
@@ -302,7 +340,10 @@ export default function MaintenancePage() {
         requestedStart &&
         duration &&
         Number(duration) > 0 &&
-        safetyCriticality,
+        safetyCriticality &&
+        department &&
+        workDescription.length >= 10 &&
+        justification.length >= 10,
     )
   }
 
@@ -428,6 +469,91 @@ export default function MaintenancePage() {
                   id="work-type-error"
                 >
                   {errors.workType}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="department"
+                className="text-sm font-medium leading-none"
+              >
+                Department
+              </label>
+              <Select
+                value={department}
+                onValueChange={setDepartment}
+                disabled={loading}
+              >
+                <SelectTrigger id="department">
+                  <SelectValue placeholder="Select a department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEPARTMENT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.department && (
+                <p
+                  className="text-xs text-destructive"
+                  id="department-error"
+                >
+                  {errors.department}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <label
+                htmlFor="work-description"
+                className="text-sm font-medium leading-none"
+              >
+                Work Description
+              </label>
+              <Textarea
+                id="work-description"
+                placeholder="Describe the maintenance work to be performed"
+                value={workDescription}
+                onChange={(e) => setWorkDescription(e.target.value)}
+                disabled={loading}
+                minLength={10}
+                required
+              />
+              {errors.workDescription && (
+                <p
+                  className="text-xs text-destructive"
+                  id="work-description-error"
+                >
+                  {errors.workDescription}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <label
+                htmlFor="justification"
+                className="text-sm font-medium leading-none"
+              >
+                Justification
+              </label>
+              <Textarea
+                id="justification"
+                placeholder="Why is this work needed now?"
+                value={justification}
+                onChange={(e) => setJustification(e.target.value)}
+                disabled={loading}
+                minLength={10}
+                required
+              />
+              {errors.justification && (
+                <p
+                  className="text-xs text-destructive"
+                  id="justification-error"
+                >
+                  {errors.justification}
                 </p>
               )}
             </div>
@@ -628,9 +754,32 @@ export default function MaintenancePage() {
                               request.safety_criticality}
                           </TableCell>
                           <TableCell>
-                            <Badge className={badge.className}>
-                              {badge.label}
-                            </Badge>
+                            {request.status === "submitted" ? (
+                              <Badge className={`${badge.className} animate-pulse`}>
+                                AI Processing...
+                              </Badge>
+                            ) : request.status === "scored" ? (
+                              <div className="flex items-center gap-2">
+                                <Badge className={badge.className}>
+                                  {badge.label}
+                                </Badge>
+                                <span className="text-sm font-medium">
+                                  {request.priority_score !== null
+                                    ? request.priority_score.toFixed(1)
+                                    : "N/A"}
+                                </span>
+                                <a
+                                  href="/dashboard/ai"
+                                  className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                >
+                                  View AI Plan
+                                </a>
+                              </div>
+                            ) : (
+                              <Badge className={badge.className}>
+                                {badge.label}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             {request.priority_score !== null
