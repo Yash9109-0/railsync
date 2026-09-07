@@ -94,7 +94,7 @@ export default function AiPage() {
     const { data: reqData, error: reqError } = await supabase
       .from("block_requests")
       .select("*")
-      .in("status", ["submitted", "scored", "safety_blocked"])  
+      .in("status", ["scored", "safety_blocked"])
       .order("created_at", { ascending: false })
 
     if (reqError) {
