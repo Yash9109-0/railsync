@@ -51,11 +51,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const mlApiUrl = process.env.ML_API_URL
-    if (!mlApiUrl) {
-      return NextResponse.json({ error: 'ML_API_URL is not configured' }, { status: 500 })
-    }
-
+    const mlApiUrl = process.env.ML_API_URL || 'https://railsync-ml.onrender.com'
+    
     let segment = 'unknown'
     if ((blockRequest as any).segment_id != null) {
       const { data: seg } = await supabase
@@ -113,7 +110,7 @@ export async function POST(request: NextRequest) {
         .update({
           priority_score: priorityScore,
           delay_risk: delayRisk,
-          status: 'scored',
+          status: 'Scored',
         })
         .eq('id', id)
 
@@ -126,7 +123,7 @@ export async function POST(request: NextRequest) {
       id,
       priority_score: priorityScore,
       delay_risk: delayRisk,
-      status: preview ? 'preview' : 'scored',
+      status: preview ? 'preview' : 'Scored',
       preview,
       requested_duration_mins,
       trains_scheduled_in_window,
