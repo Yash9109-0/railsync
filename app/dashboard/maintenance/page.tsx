@@ -287,19 +287,23 @@ export default function MaintenancePage() {
     setIsSubmitting(true)
 
     const supabase = createClient()
-    const { data: insertData, error } =
-      await supabase.from("block_requests").insert({
-        segment_id: Number(segmentId),
-        work_type: workType,
-        work_description: workDescription,
-        requested_start: `${requestedStart}:00`,
-        requested_duration_mins: Number(duration),
-        safety_criticality: safetyCriticality,
-        department: department || null,
-        justification: justification,
-        status: "submitted",
-        requested_by: user.id,
-      })
+    const { data, error } =
+      await supabase
+        .from("block_requests")
+        .insert({
+          segment_id: Number(segmentId),
+          work_type: workType,
+          work_description: workDescription,
+          requested_start: `${requestedStart}:00`,
+          requested_duration_mins: Number(duration),
+          safety_criticality: safetyCriticality,
+          department: department || null,
+          justification: justification,
+          status: "submitted",
+          requested_by: user.id,
+        })
+        .select()
+        .single()
 
     if (error) {
       toast.error(`Failed to submit request: ${error.message}`)
@@ -307,22 +311,12 @@ export default function MaintenancePage() {
       return
     }
 
-    const newId = (insertData as Array<{ id: string }> | null)?.[0]?.id
-    if (newId) {
-      void (async () => {
-        try {
-          await fetch("/api/auto-process", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              requestId: newId,
-              block_request_id: newId,
-            }),
-          })
-        } catch (err) {
-          console.error("Auto-process request failed:", err)
-        }
-      })()
+    if (data?.id) {
+      fetch('/api/auto-process', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ request_id: data.id })
+      }).catch(console.error)
     }
 
     toast.success("Request submitted — AI is scoring it now.")

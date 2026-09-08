@@ -197,6 +197,19 @@ export default function AiPage() {
 
   const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blocked") => {
     const isReprocessing = !!reprocessing[row.id]
+    console.log(row)
+    const aiPlan = (row as any)?.ai_plan ?? (row as any)?.plan_options
+    const tableOptions: PlanOption[] = optionsByRequest[row.id] ?? []
+    const extraOptions: PlanOption[] = Array.isArray(aiPlan)
+      ? (aiPlan as PlanOption[])
+      : aiPlan && typeof aiPlan === "object"
+        ? [aiPlan as PlanOption]
+        : []
+    const planOptions: PlanOption[] = [...tableOptions, ...extraOptions]
+    const planText =
+      typeof aiPlan === "string"
+        ? aiPlan
+        : ((row as any)?.ai_explanation as string | undefined)
 
     return (
       <Card
@@ -287,7 +300,7 @@ export default function AiPage() {
                   </>
                 ) : (
                   <>
-                    <ChevronDown className="h-4 w-4 mr-1" /> Show plan options (3)
+                    <ChevronDown className="h-4 w-4 mr-1" /> Show plan options ({planOptions.length})
                   </>
                 )}
               </Button>
@@ -295,12 +308,24 @@ export default function AiPage() {
           </div>
 
           {variant === "scored" && expanded[row.id] && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-              {optionsByRequest[row.id]?.length
-                ? optionsByRequest[row.id]!.map(renderOptionCard)
-                : Array.from({ length: 3 }).map((_, i) => (
-                    <Skeleton key={i} className="h-40 w-full" />
-                  ))}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 min-h-[10rem]">
+              {planOptions.length > 0
+                ? planOptions.map(renderOptionCard)
+                : planText
+                  ? (
+                    <div className="col-span-full rounded-lg border p-4 text-sm">
+                      <p className="font-medium mb-1">View AI Plan</p>
+                      <p className="whitespace-pre-wrap text-muted-foreground">{planText}</p>
+                    </div>
+                  )
+                  : (
+                    <div className="col-span-full rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      <p className="font-medium">No plan options generated yet</p>
+                      <p className="mt-1">
+                        Plan options appear here once AI processing completes.
+                      </p>
+                    </div>
+                  )}
             </div>
           )}
         </CardContent>
