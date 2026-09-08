@@ -834,49 +834,53 @@ useEffect(() => {
     return br.block_plan_options?.find((o) => o.id === selId);
   }
 
-  async function handleApproveSelected(br: BlockRequestRow) {
+    async function handleApproveSelected(br: BlockRequestRow) {
     const opt = getSelectedOption(br);
     const start = opt ? opt.adjusted_start : br.requested_start;
     const duration = opt ? opt.adjusted_duration_mins : br.requested_duration_mins;
     setActingId(br.id);
-    const { error } = await supabase.from("approvals").insert({
-      block_request_id: br.id,
-      officer_id: user?.id ?? null,
-      decision: "approved" as ApprovalDecision,
-      modified_start: new Date(start).toISOString(),
-      modified_duration_mins: duration,
-      decided_at: new Date().toISOString(),
-    });
-    if (error) {
-      toast.error("Failed to approve", { description: error.message });
-      setActingId(null);
-      return;
-    }
-    const { error: updErr } = await supabase
-      .from("block_requests")
-      .update({
-        status: "approved" as BlockRequestStatus,
-        requested_start: new Date(start).toISOString(),
-        requested_duration_mins: duration,
-      })
-      .eq("id", br.id);
-    if (updErr) {
-      toast.error("Failed to update block request", {
-        description: updErr.message,
+    try {
+      const { error } = await supabase.from("approvals").insert({
+        block_request_id: br.id,
+        officer_id: user?.id ?? null,
+        decision: "approved" as ApprovalDecision,
+        modified_start: new Date(start).toISOString(),
+        modified_duration_mins: duration,
+        decided_at: new Date().toISOString(),
       });
-      setActingId(null);
-      return;
+      if (error) {
+        toast.error("Failed to approve", { description: error.message });
+        return;
+      }
+      const { error: updErr } = await supabase
+        .from("block_requests")
+        .update({
+          status: "approved" as BlockRequestStatus,
+          requested_start: new Date(start).toISOString(),
+          requested_duration_mins: duration,
+        })
+        .eq("id", br.id);
+      if (updErr) {
+        toast.error("Failed to update block request", {
+          description: updErr.message,
+        });
+        return;
+      }
+      toast.success("Request approved", {
+        description: `Block request #${br.id.slice(0, 8)} approved with selected plan.`,
+      });
+      setPending((prev) => prev.filter((r) => r.id !== br.id));
+      setSelectedOptions((prev) => {
+        const next = { ...prev };
+        delete next[br.id];
+        return next;
+      });
+      setApproveTarget(null); // modal target clear
+      setConfirmApproveOpen(false);
+      fetchApprovals();
+    } finally {
+      setActingId(null); // <-- YEH MISSING THA, iske bina dusra button dead
     }
-    toast.success("Request approved", {
-      description: `Block request #${br.id.slice(0, 8)} approved with selected plan.`,
-    });
-    setPending((prev) => prev.filter((r) => r.id !== br.id));
-    setSelectedOptions((prev) => {
-      const next = { ...prev };
-      delete next[br.id];
-      return next;
-    });
-    fetchApprovals();
   }
 
   async function handleMarkVerified(log: VerifyLogRow) {
