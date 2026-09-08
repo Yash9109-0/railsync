@@ -23,18 +23,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
 
-    const {
-      id,
-      preview = false,
-      requested_duration_mins,
-      trains_scheduled_in_window,
-    } = body
+    const { id, preview = false, requested_duration_mins, trains_scheduled_in_window } = body
 
     if (!id) {
-      return NextResponse.json(
-        { error: 'block_request id is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'block_request id is required' }, { status: 400 })
     }
 
     const supabase = await createClient()
@@ -45,21 +37,14 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (fetchError || !blockRequest) {
-      return NextResponse.json(
-        { error: fetchError?.message ?? 'block_request not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: fetchError?.message ?? 'block_request not found' }, { status: 404 })
     }
 
-    const mlApiUrl = process.env.ML_API_URL || 'https://railsync-ml.onrender.com'
-    
+    const mlApiUrl = process.env.ML_API_URL || 'https://railsync-ml.onrender.com/predict-priority'
+
     let segment = 'unknown'
     if ((blockRequest as any).segment_id != null) {
-      const { data: seg } = await supabase
-        .from('segments')
-        .select('name')
-        .eq('id', (blockRequest as any).segment_id)
-        .single<{ name: string }>()
+      const { data: seg } = await supabase.from('segments').select('name').eq('id', (blockRequest as any).segment_id).single<{ name: string }>()
       segment = seg?.name ?? String((blockRequest as any).segment_id)
     }
 
@@ -69,7 +54,13 @@ export async function POST(request: NextRequest) {
       requestedStartHour = new Date(parsed).getHours()
     }
 
-    const mlResponse = await fetch(`${mlApiUrl}/predict-priority`, {
+    const desc = ((blockRequest as any).description || "").toLowerCase()
+    let text_urgency_score = 30
+    if (desc.includes("urgent") || desc.includes("emergency")) text_urgency_score = 85
+    else if (desc.includes("critical") || desc.includes("crack") || desc.includes("failure")) text_urgency_score = 70
+    else if (desc.includes("inspection")) text_urgency_score = 40
+
+    const mlResponse = await fetch(mlApiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -81,16 +72,14 @@ export async function POST(request: NextRequest) {
         trains_scheduled_in_window: trains_scheduled_in_window ?? (blockRequest as any).trains_scheduled_in_window ?? 0,
         asset_risk_flag: (blockRequest as any).asset_risk_flag ?? 0,
         historical_overrun_rate: (blockRequest as any).historical_overrun_rate ?? 0,
+        text_urgency_score,
       }),
       cache: 'no-store',
     })
 
     if (!mlResponse.ok) {
       const detail = await mlResponse.text()
-      return NextResponse.json(
-        { error: `ML API request failed (${mlResponse.status}): ${detail}` },
-        { status: 502 }
-      )
+      return NextResponse.json({ error: `ML API request failed (${mlResponse.status}): ${detail}` }, { status: 502 })
     }
 
     const mlResult: MlPredictResponse = await mlResponse.json()
@@ -98,21 +87,15 @@ export async function POST(request: NextRequest) {
     const delayRisk = mlResult.delay_risk ?? null
 
     if (priorityScore === undefined || priorityScore === null) {
-      return NextResponse.json(
-        { error: 'ML API did not return a priority_score' },
-        { status: 502 }
-      )
+      return NextResponse.json({ error: 'ML API did not return a priority_score' }, { status: 502 })
     }
 
     if (!preview) {
-      const { error: updateError } = await supabase
-        .from('block_requests')
-        .update({
-          priority_score: priorityScore,
-          delay_risk: delayRisk,
-          status: 'Scored',
-        })
-        .eq('id', id)
+      const { error: updateError } = await supabase.from('block_requests').update({
+        priority_score: priorityScore,
+        delay_risk: delayRisk,
+        status: 'Scored',
+      }).eq('id', id)
 
       if (updateError) {
         return NextResponse.json({ error: updateError.message }, { status: 500 })
@@ -125,18 +108,11 @@ export async function POST(request: NextRequest) {
       delay_risk: delayRisk,
       status: preview ? 'preview' : 'Scored',
       preview,
-      requested_duration_mins,
-      trains_scheduled_in_window,
     })
-  } catch (error) {
-    if (error instanceof ScoreError) {
-      return NextResponse.json(error.body, { status: error.status })
-    }
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : 'An unexpected error occurred',
-      },
-      { status: 500 }
-    )
-  }
-}
+  } catch (error: any) {
+  console.error(error)
+  return NextResponse.json(
+    { error: error?.message || 'An unexpected error occurred' },
+    { status: error?.status || 500 }
+  )
+}}
