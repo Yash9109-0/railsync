@@ -72,10 +72,10 @@ export async function analyzeUrgency(
       reasoning: obj.reasoning || "Analyzed successfully.",
     }
   } catch (error) {
-    console.error("LLM Urgency Parsing failed:", error)
+    console.error("LLM URGENCY CALL FAILED", error)
     return {
       text_urgency_score: 50,
-      reasoning: "Could not analyze text",
+      reasoning: "LLM unavailable, using default",
     }
   }
 }
