@@ -14,4 +14,7 @@ $reqBy = if ($pArr.Count -gt 0) { $pArr[0].id } else { $null }
 $startStr = (Get-Date).AddHours(40).ToString("yyyy-MM-ddTHH:mm:ss")
 $body = @{ segment_id = [int]$seg.id; work_type = "track"; work_description = "Inspect rail junction" ; justification = "Urgent safety inspection"; requested_start = $startStr; requested_duration_mins = 90; safety_criticality = "safety_critical"; department = "TMS"; status = "submitted" }
 if ($reqBy) { $body.requested_by = $reqBy }
-Write-Host "JSON:`n$(ConvertTo-Json $body -Compress)"
+$clean = @{}
+foreach ($k in $body.Keys) { if ($body[$k] -isnot [string] -or $body[$k] -ne '') { $clean[$k] = $body[$k] } }
+$body = $clean
+Write-Host "JSON:`n$(ConvertTo-Json $body -Depth 10 -Compress)"
