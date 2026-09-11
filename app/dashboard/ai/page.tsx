@@ -7,24 +7,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
-import { ChevronDown, ChevronUp, Loader2, RefreshCw, ShieldAlert } from "lucide-react"
+import { ChevronDown, ChevronUp, Loader2, RefreshCw, ShieldAlert, AlertTriangle, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { PlanOption } from "@/lib/types"
+import type { BlockRequest } from "@/lib/types"
 
-type BlockRequestRow = {
-  id: string
-  segment_id: number | null
-  work_type: string
-  requested_start: string
-  requested_duration_mins: number
-  safety_criticality: string
-  work_description: string | null
-  justification: string | null
-  status: string
-  priority_score: number | null
-  delay_risk: string | null
-  created_at: string
-}
+type BlockRequestRow = BlockRequest
 
 const supabase = createClient()
 
@@ -61,6 +48,20 @@ function safetyBadge(criticality: string | null | undefined) {
   }
 }
 
+function departmentBadge(dept: string | null | undefined) {
+  const d = (dept ?? "").toUpperCase()
+  switch (d) {
+    case "TMS":
+      return "text-blue-700 dark:text-blue-400 bg-blue-500/10 border-blue-600/20"
+    case "TDMS":
+      return "text-purple-700 dark:text-purple-400 bg-purple-500/10 border-purple-600/20"
+    case "SMMS":
+      return "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-600/20"
+    default:
+      return "text-muted-foreground bg-muted/50"
+  }
+}
+
 function formatDateTime(value: string) {
   const parsed = Date.parse(value)
   if (Number.isNaN(parsed)) return value
@@ -76,6 +77,7 @@ export default function AiPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [reprocessing, setReprocessing] = useState<Record<string, boolean>>({})
+  const [sweeping, setSweeping] = useState(false)
 
   const loadAll = async () => {
     setLoading(true)
@@ -83,7 +85,7 @@ export default function AiPage() {
       .from("block_requests")
       .select("*")
       .in("status", ["scored", "safety_blocked"])
-      .order("priority_score", { ascending: false, nulls: "last" })
+      .order("priority_score", { ascending: false, nullsFirst: false })
 
     if (error) {
       toast.error("Failed to load block requests")
@@ -117,14 +119,60 @@ export default function AiPage() {
     setLoading(false)
   }
 
+  const sweepStuckRequests = async (showToast = true) => {
+    setSweeping(true)
+    try {
+      const { data: stuckRequests, error: fetchError } = await supabase
+        .from("block_requests")
+        .select("id")
+        .eq("status", "submitted")
+
+      if (fetchError) {
+        toast.error("Failed to fetch stuck requests")
+        return 0
+      }
+
+      const stuckIds = (stuckRequests ?? []).map((r) => r.id)
+      if (stuckIds.length === 0) {
+        if (showToast) toast.info("No stuck requests found")
+        return 0
+      }
+
+      await Promise.all(
+        stuckIds.map((id) =>
+          fetch("/api/block-requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ block_request_id: id }),
+          }).catch(() => null)
+        )
+      )
+
+      await loadAll()
+
+      if (showToast) {
+        toast.success(`Processed ${stuckIds.length} stuck request${stuckIds.length !== 1 ? "s" : ""}`)
+      }
+      return stuckIds.length
+    } catch {
+      toast.error("Sweep failed")
+      return 0
+    } finally {
+      setSweeping(false)
+    }
+  }
+
   useEffect(() => {
-    loadAll()
+    const init = async () => {
+      await sweepStuckRequests(false)
+    }
+    init()
   }, [])
 
   const handleReprocess = async (id: string) => {
     setReprocessing((p) => ({ ...p, [id]: true }))
     try {
-      const res = await fetch("/api/auto-process", {
+      const res = await fetch("/api/block-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ block_request_id: id }),
@@ -146,9 +194,7 @@ export default function AiPage() {
   const safetyBlocked = requests.filter((r) => r.status === "safety_blocked")
   const scored = requests
     .filter((r) => r.status === "scored")
-    .sort(
-      (a, b) => (b.priority_score ?? -Infinity) - (a.priority_score ?? -Infinity)
-    )
+    .sort((a, b) => (b.priority_score ?? -Infinity) - (a.priority_score ?? -Infinity))
 
   const toggleExpanded = (id: string) => {
     setExpanded((p) => ({ ...p, [id]: !p[id] }))
@@ -197,19 +243,8 @@ export default function AiPage() {
 
   const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blocked") => {
     const isReprocessing = !!reprocessing[row.id]
-    console.log(row)
-    const aiPlan = (row as any)?.ai_plan ?? (row as any)?.plan_options
     const tableOptions: PlanOption[] = optionsByRequest[row.id] ?? []
-    const extraOptions: PlanOption[] = Array.isArray(aiPlan)
-      ? (aiPlan as PlanOption[])
-      : aiPlan && typeof aiPlan === "object"
-        ? [aiPlan as PlanOption]
-        : []
-    const planOptions: PlanOption[] = [...tableOptions, ...extraOptions]
-    const planText =
-      typeof aiPlan === "string"
-        ? aiPlan
-        : ((row as any)?.ai_explanation as string | undefined)
+    const planText = row.ai_explanation
 
     return (
       <Card
@@ -224,12 +259,14 @@ export default function AiPage() {
             <div className="space-y-1 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium">{row.work_type}</span>
-                <Badge
-                  variant="outline"
-                  className={safetyBadge(row.safety_criticality)}
-                >
+                <Badge variant="outline" className={safetyBadge(row.safety_criticality)}>
                   {row.safety_criticality}
                 </Badge>
+                {row.department && (
+                  <Badge variant="outline" className={departmentBadge(row.department)}>
+                    {row.department}
+                  </Badge>
+                )}
                 {variant === "safety_blocked" && (
                   <Badge
                     variant="outline"
@@ -247,6 +284,12 @@ export default function AiPage() {
                 <p className="text-sm text-muted-foreground italic">
                   {row.justification}
                 </p>
+              )}
+              {row.ai_explanation && (
+                <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-muted/50">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">AI Explanation</p>
+                  <p className="text-sm whitespace-pre-wrap">{row.ai_explanation}</p>
+                </div>
               )}
               <p className="text-xs text-muted-foreground">
                 Requested start:{" "}
@@ -300,7 +343,7 @@ export default function AiPage() {
                   </>
                 ) : (
                   <>
-                    <ChevronDown className="h-4 w-4 mr-1" /> Show plan options ({planOptions.length})
+                    <ChevronDown className="h-4 w-4 mr-1" /> Show plan options ({tableOptions.length})
                   </>
                 )}
               </Button>
@@ -309,16 +352,16 @@ export default function AiPage() {
 
           {variant === "scored" && expanded[row.id] && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 min-h-[10rem]">
-              {planOptions.length > 0
-                ? planOptions.map(renderOptionCard)
+              {tableOptions.length > 0
+                ? tableOptions.map(renderOptionCard)
                 : planText
-                  ? (
+                ? (
                     <div className="col-span-full rounded-lg border p-4 text-sm">
                       <p className="font-medium mb-1">View AI Plan</p>
                       <p className="whitespace-pre-wrap text-muted-foreground">{planText}</p>
                     </div>
                   )
-                  : (
+                : (
                     <div className="col-span-full rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                       <p className="font-medium">No plan options generated yet</p>
                       <p className="mt-1">
@@ -333,24 +376,49 @@ export default function AiPage() {
     )
   }
 
+  const renderSkeleton = () => (
+    <Skeleton className="h-40 w-full" />
+  )
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">AI Priority & Scoring</h1>
           <p className="text-muted-foreground">
-            Requests are scored and planned automatically — nothing to run manually here.
+            Scored and safety-blocked requests. Stuck submissions are auto-processed on load.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => sweepStuckRequests(true)}
+            disabled={sweeping || loading}
+          >
+            {sweeping ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                Checking...
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+                Check for Stuck Requests
+              </>
+            )}
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-36 w-full" />
+            <Skeleton key={i} className="h-40 w-full" />
           ))}
         </div>
       ) : requests.length === 0 ? (
@@ -389,4 +457,18 @@ export default function AiPage() {
       )}
     </div>
   )
+}
+
+type PlanOption = {
+  id: string
+  block_request_id: string
+  option_label: string
+  adjusted_start: string
+  adjusted_duration_mins: number | null
+  priority_score: number | null
+  delay_risk: string | null
+  is_recommended: boolean
+  explanation: string | null
+  what_if_note: string | null
+  created_at: string
 }

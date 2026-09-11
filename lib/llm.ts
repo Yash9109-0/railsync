@@ -75,7 +75,7 @@ export async function analyzeUrgency(
     console.error("LLM URGENCY CALL FAILED", error)
     return {
       text_urgency_score: 50,
-      reasoning: "LLM unavailable, using default",
+      reasoning: "Could not analyze text",
     }
   }
 }

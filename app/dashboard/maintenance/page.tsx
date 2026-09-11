@@ -312,10 +312,10 @@ export default function MaintenancePage() {
     }
 
     if (data?.id) {
-      fetch('/api/auto-process', {
+      fetch('/api/block-requests', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ request_id: data.id })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ block_request_id: data.id })
       }).catch(console.error)
     }
 
