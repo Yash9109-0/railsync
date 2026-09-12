@@ -40,6 +40,26 @@ export type BlockRequestStatus =
   | 'safety_blocked'
 export type SafetyCriticality = 'routine' | 'urgent' | 'safety_critical'
 export type Department = 'TMS' | 'TDMS' | 'SMMS'
+export type DefectSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type DefectStatus = 'open' | 'block_requested' | 'in_progress' | 'resolved'
+
+export interface Defect {
+  id: string
+  segment_id: number | null
+  department: Department | null
+  asset_description: string | null
+  work_description: string | null
+  justification: string | null
+  defect_type: string
+  severity: DefectSeverity
+  due_date: string
+  requested_start: string | null
+  requested_duration_mins: number | null
+  status: DefectStatus
+  linked_block_request_id: string | null
+  created_by: string | null
+  created_at: string
+}
 
 export interface BlockRequest {
   id: string
@@ -140,6 +160,7 @@ export type Tables =
   | { table: 'segment_stats'; row: SegmentStats }
   | { table: 'retraining_log'; row: RetrainingLog }
   | { table: 'block_plan_options'; row: BlockPlanOption }
+  | { table: 'defects'; row: Defect }
 
 export type TableName = Tables['table']
 
