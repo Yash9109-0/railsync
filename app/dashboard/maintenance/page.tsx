@@ -560,12 +560,9 @@ export default function MaintenancePage() {
       .insert({
         segment_id: Number(segmentId),
         department,
-        work_description: workDescription,
         defect_type: defectType,
         severity,
         due_date: dueDate,
-        requested_start: `${requestedStart}:00`,
-        requested_duration_mins: Number(requestedDurationMins),
         status: "open",
         created_by: user.id,
       })
