@@ -488,6 +488,7 @@ export default function MaintenancePage() {
       .single()
 
     if (blockReqError) {
+      console.error("Failed to create block request from defect:", blockReqError)
       toast.error(`Failed to create block request: ${blockReqError.message}`)
       return
     }
@@ -554,32 +555,31 @@ export default function MaintenancePage() {
     setIsSubmitting(true)
     const supabase = createClient()
 
-    const defectInsertPayload = {
-      segment_id: Number(segmentId),
-      department,
-      work_description: workDescription,
-      defect_type: defectType,
-      severity,
-      due_date: dueDate,
-      requested_start: `${requestedStart}:00`,
-      requested_duration_mins: Number(requestedDurationMins),
-      status: "open",
-      created_by: user.id,
-    }
-
     const { data: defectData, error: defectError } = await supabase
       .from("defects")
-      .insert(defectInsertPayload)
+      .insert({
+        segment_id: Number(segmentId),
+        department,
+        work_description: workDescription,
+        defect_type: defectType,
+        severity,
+        due_date: dueDate,
+        requested_start: `${requestedStart}:00`,
+        requested_duration_mins: Number(requestedDurationMins),
+        status: "open",
+        created_by: user.id,
+      })
       .select()
       .single()
 
     if (defectError) {
+      console.error("Failed to insert defect:", defectError)
       toast.error(`Failed to log defect: ${defectError.message}`)
       setIsSubmitting(false)
       return
     }
 
-    if (requestBlock && defectData?.id) {
+    if (requestBlock) {
       const { data: blockReqData, error: blockReqError } = await supabase
         .from("block_requests")
         .insert({
@@ -598,6 +598,7 @@ export default function MaintenancePage() {
         .single()
 
       if (blockReqError) {
+        console.error("Failed to insert block request:", blockReqError)
         toast.error(
           `Defect logged but failed to create block request: ${blockReqError.message}`,
         )
@@ -616,6 +617,7 @@ export default function MaintenancePage() {
 
       await triggerAIScoring(blockReqData.id)
       await fetchRequests()
+      toast.success("Defect and block request created")
     } else {
       toast.success("Defect logged successfully")
     }
