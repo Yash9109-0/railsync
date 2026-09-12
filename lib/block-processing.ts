@@ -25,7 +25,11 @@ export async function processBlockRequest(block_request_id: string) {
   const { data: req, error: fetchErr } = await sb.from('block_requests')
     .select('segment_id, work_type, requested_start, requested_duration_mins, safety_criticality, work_description, justification')
     .eq('id', block_request_id).single<ReqRow>()
-  if (fetchErr || !req) throw new Error(fetchErr?.message ?? 'block_request not found')
+  if (fetchErr || !req) {
+    console.error('[block-processing] Fetch error:', fetchErr?.message)
+    throw new Error(fetchErr?.message ?? 'block_request not found')
+  }
+  console.log('[block-processing] Fetched request:', { id: block_request_id, segment_id: req.segment_id, work_type: req.work_type })
 
   let segment = 'unknown'
   if (req.segment_id != null) {
@@ -35,6 +39,7 @@ export async function processBlockRequest(block_request_id: string) {
 
   // 2. Analyze urgency via LLM
   const { text_urgency_score } = await analyzeUrgency(req.work_description ?? '', req.justification ?? '')
+  console.log('[block-processing] Urgency score:', text_urgency_score)
 
   // 3. segment_stats (default overrun 0.15, sample_count 0)
   let overrun = 0.15, sample = 0
@@ -51,16 +56,18 @@ export async function processBlockRequest(block_request_id: string) {
     const cs = Date.parse(c.requested_start)
     return !Number.isNaN(cs) && !Number.isNaN(bs) && overlaps(bs, bd, cs, c.requested_duration_mins ?? 0)
   })
+  console.log('[block-processing] Conflict check:', { conflict, othersCount: others?.length })
 
   // 5. Build 3 options
   const dur = req.requested_duration_mins ?? 120
   type Opt = { label: string; start: Date; duration: number }
   const base = new Date(Number.isNaN(bs) ? Date.now() : bs), desc = req.work_description ?? '', just = req.justification ?? ''
   const options: Opt[] = [
-    { label: 'Option A: As Requested', start: new Date(base), duration: dur },
-    { label: 'Option B: Conflict-Avoiding Shift', start: new Date(base.getTime() + (conflict ? 90 : -60) * 6e4), duration: dur },
-    { label: 'Option C: Shortened Duration', start: new Date(base), duration: Math.max(30, Math.round(dur * 0.75)) },
+    { label: 'Option A — As Requested', start: new Date(base), duration: dur },
+    { label: 'Option B — Conflict-Avoiding Shift', start: new Date(base.getTime() + (conflict ? 90 : -60) * 6e4), duration: dur },
+    { label: 'Option C — Shortened Duration', start: new Date(base), duration: Math.max(30, Math.round(dur * 0.75)) },
   ]
+  console.log('[block-processing] Built options:', options.map(o => ({ label: o.label, start: o.start.toISOString(), duration: o.duration })))
 
   // 6. Score each option via ML API
   const scored = await Promise.all(options.map(async (opt): Promise<Opt & { priority_score: number; delay_risk: Risk }> => {
@@ -79,10 +86,11 @@ export async function processBlockRequest(block_request_id: string) {
       const ml = (await res.json()) as { priority_score: number; delay_risk?: string | null }
       return { ...opt, priority_score: ml.priority_score, delay_risk: normalizeRisk(ml.delay_risk) }
     } catch (err) {
-      console.error('ML score failed', opt.label, err)
+      console.error('[block-processing] ML score failed:', opt.label, err)
       return { ...opt, priority_score: 50, delay_risk: 'Medium' as Risk }
     }
   }))
+  console.log('[block-processing] Scored options:', scored.map(o => ({ label: o.label, priority_score: o.priority_score, delay_risk: o.delay_risk })))
 
   // 7. Recommend = lowest delay_risk, tie-break highest priority_score
   let recIdx = 0
@@ -99,6 +107,7 @@ export async function processBlockRequest(block_request_id: string) {
   // 9. Delete existing plan options, insert 3 new rows
   await sb.from('block_plan_options').delete().eq('block_request_id', block_request_id)
   await sb.from('block_plan_options').insert(withMeta.map((o) => ({ block_request_id, option_label: o.label, adjusted_start: o.start.toISOString(), adjusted_duration_mins: o.duration, priority_score: o.priority_score, delay_risk: o.delay_risk, is_recommended: !over240 && o.i === recIdx, explanation: o.explanation, what_if_note: o.what_if_note })))
+  console.log('[block-processing] Inserted plan options:', withMeta.map(o => ({ label: o.label, is_recommended: !over240 && o.i === recIdx })))
 
   // 10. Update block_request
   const rec = withMeta[recIdx]
@@ -107,6 +116,7 @@ export async function processBlockRequest(block_request_id: string) {
   } else {
     await sb.from('block_requests').update({ priority_score: rec.priority_score, delay_risk: rec.delay_risk, ai_explanation: rec.explanation, status: 'scored' }).eq('id', block_request_id)
   }
+  console.log('[block-processing] Updated request status:', over240 ? 'safety_blocked' : 'scored')
 
   return { block_request_id, success: true }
 }

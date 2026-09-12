@@ -31,8 +31,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { toast } from "sonner"
-import { ClipboardList, Copy, Search } from "lucide-react"
-import type { BlockRequest, Segment } from "@/lib/types"
+import { ClipboardList, Copy, Search, RefreshCw } from "lucide-react"
+import type { BlockRequest, Segment, PlanOption } from "@/lib/types"
 
 interface SegmentOption extends Segment {
   displayName: string
@@ -146,6 +146,7 @@ export default function MaintenancePage() {
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [segments, setSegments] = useState<SegmentOption[]>([])
   const [requests, setRequests] = useState<BlockRequest[]>([])
+  const [planOptions, setPlanOptions] = useState<Record<string, PlanOption[]>>({})
   const [loading, setLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -163,6 +164,8 @@ export default function MaintenancePage() {
 
   const [searchQuery, setSearchQuery] = useState<string>("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [reprocessing, setReprocessing] = useState<Record<string, boolean>>({})
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -203,7 +206,25 @@ export default function MaintenancePage() {
         if (requestsError) {
           toast.error("Failed to load requests")
         } else {
-          setRequests((requestsData ?? []) as BlockRequest[])
+          const requestsArray = (requestsData ?? []) as BlockRequest[]
+          setRequests(requestsArray)
+
+          // Fetch plan options for scored requests
+          const scoredRequests = requestsArray.filter((r) => r.status === "scored")
+          if (scoredRequests.length > 0) {
+            const { data: optData, error: optError } = await supabase
+              .from("block_plan_options")
+              .select("*")
+              .in("block_request_id", scoredRequests.map((r) => r.id))
+            if (!optError && optData) {
+              const grouped: Record<string, PlanOption[]> = {}
+              for (const opt of (optData ?? []) as PlanOption[]) {
+                if (!grouped[opt.block_request_id]) grouped[opt.block_request_id] = []
+                grouped[opt.block_request_id].push(opt)
+              }
+              setPlanOptions(grouped)
+            }
+          }
         }
       }
 
@@ -225,7 +246,48 @@ export default function MaintenancePage() {
       toast.error("Failed to load requests")
       return
     }
-    setRequests((data ?? []) as BlockRequest[])
+    const requestsData = (data ?? []) as BlockRequest[]
+    setRequests(requestsData)
+
+    // Fetch plan options for scored requests
+    const scoredRequests = requestsData.filter((r) => r.status === "scored")
+    if (scoredRequests.length > 0) {
+      const { data: optData, error: optError } = await supabase
+        .from("block_plan_options")
+        .select("*")
+        .in("block_request_id", scoredRequests.map((r) => r.id))
+      if (!optError && optData) {
+        const grouped: Record<string, PlanOption[]> = {}
+        for (const opt of (optData ?? []) as PlanOption[]) {
+          if (!grouped[opt.block_request_id]) grouped[opt.block_request_id] = []
+          grouped[opt.block_request_id].push(opt)
+        }
+        setPlanOptions(grouped)
+      }
+    }
+  }
+
+  const handleReprocess = async (requestId: string) => {
+    setReprocessing((p) => ({ ...p, [requestId]: true }))
+    try {
+      const res = await fetch('/api/block-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ block_request_id: requestId })
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        toast.error(`Reprocessing failed: ${json.error ?? 'Unknown error'}`)
+      } else {
+        toast.success("Reprocessed successfully")
+        await fetchRequests()
+      }
+    } catch (err) {
+      toast.error("Reprocessing failed")
+    } finally {
+      setReprocessing((p) => ({ ...p, [requestId]: false }))
+    }
   }
 
   const resetForm = () => {
@@ -312,16 +374,29 @@ export default function MaintenancePage() {
     }
 
     if (data?.id) {
-      fetch('/api/block-requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ block_request_id: data.id })
-      }).catch(console.error)
+      try {
+        const res = await fetch('/api/block-requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ block_request_id: data.id })
+        })
+        const json = await res.json()
+        if (!res.ok || json.error) {
+          toast.error(`AI processing failed: ${json.error ?? 'Unknown error'}`)
+        } else {
+          toast.success("Request submitted and AI scoring complete!")
+        }
+      } catch (err) {
+        toast.error("AI processing failed - request saved but scoring pending")
+      }
+      // Refresh to show the request and any generated plan options
+      await fetchRequests()
+    } else {
+      // Fallback if no ID returned
+      await fetchRequests()
     }
-
-    toast.success("Request submitted — AI is scoring it now.")
     resetForm()
-    void fetchRequests()
     setIsSubmitting(false)
   }
 
@@ -647,6 +722,73 @@ export default function MaintenancePage() {
         </CardContent>
       </Card>
 
+      {/* AI Plan Options for selected scored request */}
+      {selectedRequestId && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>AI Plan Options</CardTitle>
+              <CardDescription>
+                Generated for request: <strong>{requests.find(r => r.id === selectedRequestId)?.work_type}</strong> on <strong>{getSegmentName(requests.find(r => r.id === selectedRequestId)?.segment_id, segments)}</strong>
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedRequestId(null)}>
+              Clear Selection
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {planOptions[selectedRequestId]?.length ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {planOptions[selectedRequestId].map((opt) => (
+                  <div
+                    key={opt.id}
+                    className={`rounded-lg border p-4 space-y-3 ${
+                      opt.is_recommended ? "border-2 border-[#960DF2] bg-[#960DF2]/5" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold">{opt.option_label}</span>
+                      {opt.is_recommended && (
+                        <Badge className="bg-[#960DF2] hover:bg-[#960DF2] text-white text-xs">
+                          Recommended
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      <span>{formatDateTime(opt.adjusted_start)}</span> ·{" "}
+                      {opt.adjusted_duration_mins ?? 0} min
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-bold text-primary">
+                        {opt.priority_score != null ? Math.round(opt.priority_score) : "—"}
+                      </span>
+                      {opt.delay_risk && (
+                        <Badge variant="outline">
+                          {opt.delay_risk}
+                        </Badge>
+                      )}
+                    </div>
+                    {opt.explanation && (
+                      <p className="text-sm text-muted-foreground">{opt.explanation}</p>
+                    )}
+                    {opt.is_recommended && opt.what_if_note && (
+                      <p className="text-sm italic text-muted-foreground border-t pt-2 mt-2">
+                        {opt.what_if_note}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <p className="font-medium">No plan options yet</p>
+                <p className="text-sm mt-1">AI processing may still be running. Click "Reprocess" in the table if stuck.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>My Requests</CardTitle>
@@ -717,18 +859,22 @@ export default function MaintenancePage() {
                       <TableHead>Safety</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Priority Score</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredRequests.map((request, index) => {
                       const badge = getStatusBadge(request.status)
+                      const isSelected = selectedRequestId === request.id
+                      const canSelect = request.status === "scored"
                       return (
                         <TableRow
                           key={request.id}
-                          className="animate-fade-in"
+                          className={`animate-fade-in ${canSelect ? "cursor-pointer hover:bg-muted/50" : ""} ${isSelected ? "bg-primary/5" : ""}`}
                           style={{
                             animationDelay: `${Math.min(index * 40, 400)}ms`,
                           }}
+                          onClick={canSelect ? () => setSelectedRequestId(request.id) : undefined}
                         >
                           <TableCell>
                             {getSegmentName(request.segment_id, segments)}
@@ -779,6 +925,24 @@ export default function MaintenancePage() {
                             {request.priority_score !== null
                               ? request.priority_score.toFixed(1)
                               : "Pending AI review"}
+                          </TableCell>
+                          <TableCell>
+                            {request.status === "submitted" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleReprocess(request.id)
+                                }}
+                                disabled={reprocessing[request.id]}
+                              >
+                                {reprocessing[request.id] ? "Processing..." : "Reprocess"}
+                              </Button>
+                            )}
+                            {request.status === "scored" && (
+                              <span className="text-xs text-muted-foreground">Click row for plan options</span>
+                            )}
                           </TableCell>
                         </TableRow>
                       )
