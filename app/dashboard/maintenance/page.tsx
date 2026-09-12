@@ -5,11 +5,10 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import {
   Card,
-  CardAction,
-  CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
+  CardDescription,
+  CardContent,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -31,8 +30,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { toast } from "sonner"
-import { ClipboardList, Copy, Search, RefreshCw } from "lucide-react"
-import type { BlockRequest, Segment, PlanOption } from "@/lib/types"
+import { ClipboardList, RefreshCw, Search } from "lucide-react"
+import type { BlockRequest, Segment, PlanOption, Defect } from "@/lib/types"
 
 interface SegmentOption extends Segment {
   displayName: string
@@ -43,25 +42,24 @@ interface CurrentUser {
   email?: string | null
 }
 
-const WORK_TYPE_OPTIONS = [
-  { value: "track", label: "Track" },
-  { value: "signal", label: "Signal" },
-  { value: "electrical", label: "Electrical" },
+const DEPARTMENT_OPTIONS = ["TMS", "TDMS", "SMMS"]
+
+const DEFECT_TYPE_OPTIONS = [
+  { value: "rail_crack", label: "Rail Crack" },
+  { value: "signal_fault", label: "Signal Fault" },
+  { value: "ohe_wear", label: "OHE Wear" },
+  { value: "track_geometry", label: "Track Geometry" },
   { value: "other", label: "Other" },
 ] as const
 
-const SAFETY_OPTIONS = [
-  { value: "routine", label: "Routine" },
-  { value: "urgent", label: "Urgent" },
-  { value: "safety_critical", label: "Safety Critical" },
+const SEVERITY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "critical", label: "Critical" },
 ] as const
 
-const DEPARTMENT_OPTIONS = ["TMS", "TDMS", "SMMS"]
-
-const STATUS_CONFIG: Record<
-  string,
-  { label: string; className: string }
-> = {
+const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   submitted: {
     label: "Submitted",
     className:
@@ -85,7 +83,35 @@ const STATUS_CONFIG: Record<
   rejected: {
     label: "Rejected",
     className:
-      "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+      "bg-red-100 text-red-900 dark:bg-red-900 dark:text-red-200",
+  },
+  safety_blocked: {
+    label: "Safety Blocked",
+    className:
+      "bg-red-100 text-red-900 dark:bg-red-900 dark:text-red-200",
+  },
+}
+
+const DEFECT_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  open: {
+    label: "Open",
+    className:
+      "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
+  },
+  block_requested: {
+    label: "Block Requested",
+    className:
+      "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  },
+  in_progress: {
+    label: "In Progress",
+    className:
+      "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  },
+  resolved: {
+    label: "Resolved",
+    className:
+      "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   },
 }
 
@@ -100,6 +126,42 @@ const safetyLabels: Record<string, string> = {
   routine: "Routine",
   urgent: "Urgent",
   safety_critical: "Safety Critical",
+}
+
+const DEFECT_TYPE_LABELS: Record<string, string> = {
+  rail_crack: "Rail Crack",
+  signal_fault: "Signal Fault",
+  ohe_wear: "OHE Wear",
+  track_geometry: "Track Geometry",
+  other: "Other",
+}
+
+const SEVERITY_LABELS: Record<string, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  critical: "Critical",
+}
+
+const SEVERITY_BADGE: Record<string, string> = {
+  low: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  high: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+  critical: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+}
+
+function severityToSafetyCriticality(severity: string): string {
+  switch (severity) {
+    case "low":
+    case "medium":
+      return "routine"
+    case "high":
+      return "urgent"
+    case "critical":
+      return "safety_critical"
+    default:
+      return ""
+  }
 }
 
 function toDateTimeLocal(date: Date): string {
@@ -121,11 +183,40 @@ function formatDateTime(dateString: string): string {
   }
 }
 
+function formatDate(dateString: string): string {
+  try {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    })
+  } catch {
+    return dateString
+  }
+}
+
+function formatDateOnly(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 function getStatusBadge(
   status: string,
 ): { label: string; className: string } {
   return (
     STATUS_CONFIG[status] ?? {
+      label: status.charAt(0).toUpperCase() + status.slice(1),
+      className:
+        "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
+    }
+  )
+}
+
+function getDefectStatusBadge(
+  status: string,
+): { label: string; className: string } {
+  return (
+    DEFECT_STATUS_CONFIG[status] ?? {
       label: status.charAt(0).toUpperCase() + status.slice(1),
       className:
         "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
@@ -142,24 +233,38 @@ function getSegmentName(
   return seg ? seg.displayName : String(id)
 }
 
+function formatFromTimestamp(dateString: string): string {
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) {
+    return toDateTimeLocal(new Date())
+  }
+  return toDateTimeLocal(date)
+}
+
 export default function MaintenancePage() {
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [segments, setSegments] = useState<SegmentOption[]>([])
   const [requests, setRequests] = useState<BlockRequest[]>([])
   const [planOptions, setPlanOptions] = useState<Record<string, PlanOption[]>>({})
+  const [defects, setDefects] = useState<Defect[]>([])
+  const [blockRequestScores, setBlockRequestScores] = useState<
+    Record<string, { priority_score: number | null; status: string }>
+  >({})
   const [loading, setLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [segmentId, setSegmentId] = useState<string>("")
-  const [workType, setWorkType] = useState<string>("")
+  const [department, setDepartment] = useState<string>("")
+  const [defectType, setDefectType] = useState<string>("")
+  const [severity, setSeverity] = useState<string>("")
+  const [dueDate, setDueDate] = useState<string>(() => formatDateOnly(new Date()))
+  const [workDescription, setWorkDescription] = useState<string>("")
+  const [justification, setJustification] = useState<string>("")
   const [requestedStart, setRequestedStart] = useState<string>(
     () => toDateTimeLocal(new Date()),
   )
-  const [duration, setDuration] = useState<string>("")
-  const [safetyCriticality, setSafetyCriticality] = useState<string>("")
-  const [department, setDepartment] = useState<string>("")
-  const [workDescription, setWorkDescription] = useState<string>("")
-  const [justification, setJustification] = useState<string>("")
+  const [requestedDurationMins, setRequestedDurationMins] = useState<string>("")
+  const [requestBlock, setRequestBlock] = useState<boolean>(true)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const [searchQuery, setSearchQuery] = useState<string>("")
@@ -209,7 +314,6 @@ export default function MaintenancePage() {
           const requestsArray = (requestsData ?? []) as BlockRequest[]
           setRequests(requestsArray)
 
-          // Fetch plan options for scored requests
           const scoredRequests = requestsArray.filter((r) => r.status === "scored")
           if (scoredRequests.length > 0) {
             const { data: optData, error: optError } = await supabase
@@ -232,7 +336,40 @@ export default function MaintenancePage() {
     }
 
     fetchData()
+    fetchDefects()
   }, [])
+
+  const fetchDefects = async () => {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("defects")
+      .select("*")
+      .order("due_date", { ascending: true })
+    if (error) {
+      toast.error("Failed to load defects")
+      return
+    }
+    const defectsData = (data ?? []) as Defect[]
+    setDefects(defectsData)
+
+    const linkedIds = defectsData
+      .filter((d) => d.linked_block_request_id)
+      .map((d) => d.linked_block_request_id as string)
+    if (linkedIds.length > 0) {
+      const { data: brData } = await supabase
+        .from("block_requests")
+        .select("id, priority_score, status")
+        .in("id", linkedIds)
+      const scoreMap: Record<string, { priority_score: number | null; status: string }> = {}
+      for (const br of (brData ?? []) as { id: string; priority_score: number | null; status: string }[]) {
+        scoreMap[br.id] = {
+          priority_score: br.priority_score,
+          status: br.status,
+        }
+      }
+      setBlockRequestScores(scoreMap)
+    }
+  }
 
   const fetchRequests = async () => {
     if (!user) return
@@ -249,7 +386,6 @@ export default function MaintenancePage() {
     const requestsData = (data ?? []) as BlockRequest[]
     setRequests(requestsData)
 
-    // Fetch plan options for scored requests
     const scoredRequests = requestsData.filter((r) => r.status === "scored")
     if (scoredRequests.length > 0) {
       const { data: optData, error: optError } = await supabase
@@ -292,50 +428,119 @@ export default function MaintenancePage() {
 
   const resetForm = () => {
     setSegmentId("")
-    setWorkType("")
-    setRequestedStart(toDateTimeLocal(new Date()))
-    setDuration("")
-    setSafetyCriticality("")
     setDepartment("")
+    setDefectType("")
+    setSeverity("")
+    setDueDate(formatDateOnly(new Date()))
     setWorkDescription("")
     setJustification("")
+    setRequestedStart(toDateTimeLocal(new Date()))
+    setRequestedDurationMins("")
+    setRequestBlock(true)
     setErrors({})
   }
 
-  const copyLastRequest = () => {
-    const last = requests[0]
-    if (!last) {
-      toast("No previous requests to copy")
+  const triggerAIScoring = async (blockRequestId: string) => {
+    try {
+      const res = await fetch('/api/block-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ block_request_id: blockRequestId })
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        toast.error(`AI processing failed: ${json.error ?? 'Unknown error'}`)
+      } else {
+        toast.success("AI scoring complete!")
+      }
+    } catch (err) {
+      toast.success("Block request submitted. AI scoring may be pending.")
+    }
+  }
+
+  const createBlockRequestFromDefect = async (defect: Defect) => {
+    if (!user) {
+      toast.error("User not loaded. Please refresh the page.")
       return
     }
-    setSegmentId(String(last.segment_id ?? ""))
-    setWorkType(last.work_type)
-    setRequestedStart(formatFromTimestamp(last.requested_start))
-    setDuration(String(last.requested_duration_mins))
-    setSafetyCriticality(last.safety_criticality)
-    setErrors({})
-    toast.success("Form pre-filled from last request")
+
+    const supabase = createClient()
+    const { data: blockReqData, error: blockReqError } = await supabase
+      .from("block_requests")
+      .insert({
+        segment_id: defect.segment_id,
+        work_type: "other",
+        work_description: defect.work_description ?? defect.asset_description ?? "",
+        justification:
+          defect.justification ??
+          `Defect: ${DEFECT_TYPE_LABELS[defect.defect_type] ?? defect.defect_type}, severity: ${defect.severity}, due ${defect.due_date}`,
+        requested_start: defect.requested_start
+          ? defect.requested_start
+          : `${toDateTimeLocal(new Date())}:00`,
+        requested_duration_mins: defect.requested_duration_mins ?? 60,
+        safety_criticality: severityToSafetyCriticality(defect.severity),
+        department: defect.department ?? null,
+        status: "submitted",
+        requested_by: user.id,
+      })
+      .select()
+      .single()
+
+    if (blockReqError) {
+      toast.error(`Failed to create block request: ${blockReqError.message}`)
+      return
+    }
+
+    await supabase
+      .from("defects")
+      .update({
+        linked_block_request_id: blockReqData.id,
+        status: "block_requested",
+      })
+      .eq("id", defect.id)
+
+    await triggerAIScoring(blockReqData.id)
+    await fetchDefects()
+    await fetchRequests()
   }
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
     if (!segmentId) newErrors.segment = "Please select a segment"
-    if (!workType) newErrors.workType = "Please select a work type"
-    if (!requestedStart)
-      newErrors.requestedStart = "Please select a date and time"
-    if (!duration || Number(duration) <= 0)
-      newErrors.duration = "Please enter a valid duration"
-    if (!safetyCriticality)
-      newErrors.safety = "Please select a safety level"
     if (!department) newErrors.department = "Please select a department"
+    if (!defectType) newErrors.defectType = "Please select a defect type"
+    if (!severity) newErrors.severity = "Please select a severity"
+    if (!dueDate) newErrors.dueDate = "Please select a due date"
     if (!workDescription || workDescription.length < 10)
       newErrors.workDescription =
         "Work description must be at least 10 characters"
     if (!justification || justification.length < 10)
       newErrors.justification =
         "Justification must be at least 10 characters"
+    if (!requestedStart)
+      newErrors.requestedStart = "Please select a date and time"
+    if (!requestedDurationMins || Number(requestedDurationMins) <= 0)
+      newErrors.requestedDurationMins = "Please enter a valid duration"
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
+  }
+
+  const isFormValid = () => {
+    return Boolean(
+      user &&
+        !loading &&
+        segmentId &&
+        department &&
+        defectType &&
+        severity &&
+        dueDate &&
+        workDescription.length >= 10 &&
+        justification.length >= 10 &&
+        requestedStart &&
+        requestedDurationMins &&
+        Number(requestedDurationMins) > 0,
+    )
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -347,73 +552,77 @@ export default function MaintenancePage() {
     }
 
     setIsSubmitting(true)
-
     const supabase = createClient()
-    const { data, error } =
-      await supabase
+
+    const defectInsertPayload = {
+      segment_id: Number(segmentId),
+      department,
+      work_description: workDescription,
+      defect_type: defectType,
+      severity,
+      due_date: dueDate,
+      requested_start: `${requestedStart}:00`,
+      requested_duration_mins: Number(requestedDurationMins),
+      status: "open",
+      created_by: user.id,
+    }
+
+    const { data: defectData, error: defectError } = await supabase
+      .from("defects")
+      .insert(defectInsertPayload)
+      .select()
+      .single()
+
+    if (defectError) {
+      toast.error(`Failed to log defect: ${defectError.message}`)
+      setIsSubmitting(false)
+      return
+    }
+
+    if (requestBlock && defectData?.id) {
+      const { data: blockReqData, error: blockReqError } = await supabase
         .from("block_requests")
         .insert({
           segment_id: Number(segmentId),
-          work_type: workType,
+          work_type: "other",
           work_description: workDescription,
+          justification,
           requested_start: `${requestedStart}:00`,
-          requested_duration_mins: Number(duration),
-          safety_criticality: safetyCriticality,
-          department: department || null,
-          justification: justification,
+          requested_duration_mins: Number(requestedDurationMins),
+          safety_criticality: severityToSafetyCriticality(severity),
+          department,
           status: "submitted",
           requested_by: user.id,
         })
         .select()
         .single()
 
-    if (error) {
-      toast.error(`Failed to submit request: ${error.message}`)
-      setIsSubmitting(false)
-      return
-    }
-
-    if (data?.id) {
-      try {
-        const res = await fetch('/api/block-requests', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ block_request_id: data.id })
-        })
-        const json = await res.json()
-        if (!res.ok || json.error) {
-          toast.error(`AI processing failed: ${json.error ?? 'Unknown error'}`)
-        } else {
-          toast.success("Request submitted and AI scoring complete!")
-        }
-      } catch (err) {
-        toast.error("AI processing failed - request saved but scoring pending")
+      if (blockReqError) {
+        toast.error(
+          `Defect logged but failed to create block request: ${blockReqError.message}`,
+        )
+        setIsSubmitting(false)
+        await fetchDefects()
+        return
       }
-      // Refresh to show the request and any generated plan options
+
+      await supabase
+        .from("defects")
+        .update({
+          linked_block_request_id: blockReqData.id,
+          status: "block_requested",
+        })
+        .eq("id", defectData.id)
+
+      await triggerAIScoring(blockReqData.id)
       await fetchRequests()
     } else {
-      // Fallback if no ID returned
-      await fetchRequests()
+      toast.success("Defect logged successfully")
     }
+
     resetForm()
     setIsSubmitting(false)
-  }
-
-  const isFormValid = () => {
-    return Boolean(
-      user &&
-        !loading &&
-        segmentId &&
-        workType &&
-        requestedStart &&
-        duration &&
-        Number(duration) > 0 &&
-        safetyCriticality &&
-        department &&
-        workDescription.length >= 10 &&
-        justification.length >= 10,
-    )
+    await fetchDefects()
   }
 
   const filteredRequests = useMemo(() => {
@@ -436,34 +645,23 @@ export default function MaintenancePage() {
   }, [requests, searchQuery, statusFilter, segments])
 
   return (
-
-
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Maintenance</h1>
         <p className="text-muted-foreground">
-          Block requests and maintenance scheduling.
+          Log defects and request track blocks for maintenance work. All requests
+          are routed to AI scoring and approval.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>New Block Request</CardTitle>
+          <CardTitle>Log Defect &amp; Request Block</CardTitle>
           <CardDescription>
-            Request a track block for maintenance work. All requests are
-            routed to AI scoring and approval.
+            Record a defect and optionally request a track block in a single
+            action. The defect is always saved; the block request is created
+            only if the checkbox below is checked.
           </CardDescription>
-          <CardAction>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={requests.length === 0 || loading}
-              onClick={copyLastRequest}
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Copy Last Request
-            </Button>
-          </CardAction>
         </CardHeader>
         <CardContent>
           <form
@@ -511,39 +709,6 @@ export default function MaintenancePage() {
 
             <div className="space-y-2">
               <label
-                htmlFor="work-type"
-                className="text-sm font-medium leading-none"
-              >
-                Work Type
-              </label>
-              <Select
-                value={workType}
-                onValueChange={setWorkType}
-                disabled={loading}
-              >
-                <SelectTrigger id="work-type">
-                  <SelectValue placeholder="Select a work type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {WORK_TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.workType && (
-                <p
-                  className="text-xs text-destructive"
-                  id="work-type-error"
-                >
-                  {errors.workType}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label
                 htmlFor="department"
                 className="text-sm font-medium leading-none"
               >
@@ -575,6 +740,147 @@ export default function MaintenancePage() {
               )}
             </div>
 
+            <div className="space-y-2">
+              <label
+                htmlFor="defect-type"
+                className="text-sm font-medium leading-none"
+              >
+                Defect Type
+              </label>
+              <Select
+                value={defectType}
+                onValueChange={setDefectType}
+                disabled={loading}
+              >
+                <SelectTrigger id="defect-type">
+                  <SelectValue placeholder="Select a defect type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEFECT_TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.defectType && (
+                <p
+                  className="text-xs text-destructive"
+                  id="defect-type-error"
+                >
+                  {errors.defectType}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="severity"
+                className="text-sm font-medium leading-none"
+              >
+                Severity
+              </label>
+              <Select
+                value={severity}
+                onValueChange={setSeverity}
+                disabled={loading}
+              >
+                <SelectTrigger id="severity">
+                  <SelectValue placeholder="Select a severity" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SEVERITY_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.severity && (
+                <p
+                  className="text-xs text-destructive"
+                  id="severity-error"
+                >
+                  {errors.severity}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="due-date"
+                className="text-sm font-medium leading-none"
+              >
+                Due Date
+              </label>
+              <Input
+                id="due-date"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                disabled={loading}
+                required
+              />
+              {errors.dueDate && (
+                <p
+                  className="text-xs text-destructive"
+                  id="due-date-error"
+                >
+                  {errors.dueDate}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="requested-start"
+                className="text-sm font-medium leading-none"
+              >
+                Requested Start
+              </label>
+              <Input
+                id="requested-start"
+                type="datetime-local"
+                value={requestedStart}
+                onChange={(e) => setRequestedStart(e.target.value)}
+                disabled={loading}
+              />
+              {errors.requestedStart && (
+                <p
+                  className="text-xs text-destructive"
+                  id="requested-start-error"
+                >
+                  {errors.requestedStart}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="requested-duration-mins"
+                className="text-sm font-medium leading-none"
+              >
+                Duration (minutes)
+              </label>
+              <Input
+                id="requested-duration-mins"
+                type="number"
+                min="1"
+                placeholder="e.g. 60"
+                value={requestedDurationMins}
+                onChange={(e) => setRequestedDurationMins(e.target.value)}
+                disabled={loading}
+              />
+              {errors.requestedDurationMins && (
+                <p
+                  className="text-xs text-destructive"
+                  id="requested-duration-mins-error"
+                >
+                  {errors.requestedDurationMins}
+                </p>
+              )}
+            </div>
+
             <div className="space-y-2 md:col-span-2">
               <label
                 htmlFor="work-description"
@@ -584,7 +890,7 @@ export default function MaintenancePage() {
               </label>
               <Textarea
                 id="work-description"
-                placeholder="Describe the maintenance work to be performed"
+                placeholder="Describe the defect or maintenance work to be performed"
                 value={workDescription}
                 onChange={(e) => setWorkDescription(e.target.value)}
                 disabled={loading}
@@ -627,87 +933,20 @@ export default function MaintenancePage() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <label
-                htmlFor="requested-start"
-                className="text-sm font-medium leading-none"
-              >
-                Requested Start
+            <div className="flex items-end md:col-span-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  id="request-block"
+                  type="checkbox"
+                  checked={requestBlock}
+                  onChange={(e) => setRequestBlock(e.target.checked)}
+                  disabled={loading}
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary dark:border-gray-600 dark:bg-gray-800"
+                />
+                <span className="font-medium leading-none">
+                  Request a block for this now
+                </span>
               </label>
-              <Input
-                id="requested-start"
-                type="datetime-local"
-                value={requestedStart}
-                onChange={(e) => setRequestedStart(e.target.value)}
-                disabled={loading}
-              />
-              {errors.requestedStart && (
-                <p
-                  className="text-xs text-destructive"
-                  id="requested-start-error"
-                >
-                  {errors.requestedStart}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="duration"
-                className="text-sm font-medium leading-none"
-              >
-                Duration (minutes)
-              </label>
-              <Input
-                id="duration"
-                type="number"
-                min="1"
-                placeholder="e.g. 60"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                disabled={loading}
-              />
-              {errors.duration && (
-                <p
-                  className="text-xs text-destructive"
-                  id="duration-error"
-                >
-                  {errors.duration}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <label
-                htmlFor="safety"
-                className="text-sm font-medium leading-none"
-              >
-                Safety Criticality
-              </label>
-              <Select
-                value={safetyCriticality}
-                onValueChange={setSafetyCriticality}
-                disabled={loading}
-              >
-                <SelectTrigger id="safety">
-                  <SelectValue placeholder="Select a safety level" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SAFETY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.safety && (
-                <p
-                  className="text-xs text-destructive"
-                  id="safety-error"
-                >
-                  {errors.safety}
-                </p>
-              )}
             </div>
 
             <div className="md:col-span-2 flex justify-end">
@@ -715,24 +954,160 @@ export default function MaintenancePage() {
                 type="submit"
                 disabled={!isFormValid() || isSubmitting}
               >
-                {isSubmitting ? "Submitting..." : "Submit Request"}
+                {isSubmitting ? "Submitting..." : "Submit"}
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
 
-      {/* AI Plan Options for selected scored request */}
+      <Card>
+        <CardHeader>
+          <CardTitle>All Defects</CardTitle>
+          <CardDescription>
+            {defects.length} defect{defects.length !== 1 ? "s" : ""} tracked.
+            Defects with a linked block request show the AI priority score once
+            scored.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : defects.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <ClipboardList className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <h3 className="text-lg font-medium">No defects logged</h3>
+              <p className="text-sm text-muted-foreground mt-2 max-w-sm">
+                Log a defect using the form above and it will appear here.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Segment</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Work Description</TableHead>
+                  <TableHead>Defect Type</TableHead>
+                  <TableHead>Severity</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Block Priority</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {defects.map((defect) => {
+                  const statusBadge = getDefectStatusBadge(defect.status)
+                  const linkedBR = defect.linked_block_request_id
+                    ? blockRequestScores[defect.linked_block_request_id]
+                    : undefined
+                  return (
+                    <TableRow key={defect.id}>
+                      <TableCell>
+                        {getSegmentName(defect.segment_id, segments)}
+                      </TableCell>
+                      <TableCell>{defect.department ?? "—"}</TableCell>
+                      <TableCell>
+                        <div
+                          className="max-w-xs truncate"
+                          title={
+                            defect.work_description ??
+                            defect.asset_description ??
+                            undefined
+                          }
+                        >
+                          {defect.work_description ??
+                            defect.asset_description ??
+                            "—"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {DEFECT_TYPE_LABELS[defect.defect_type] ??
+                          defect.defect_type}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            SEVERITY_BADGE[defect.severity] ??
+                            "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                          }
+                        >
+                          {SEVERITY_LABELS[defect.severity] ?? defect.severity}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{formatDate(defect.due_date)}</TableCell>
+                      <TableCell>
+                        <Badge className={statusBadge.className}>
+                          {statusBadge.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {linkedBR &&
+                        linkedBR.status === "scored" &&
+                        linkedBR.priority_score !== null ? (
+                          <span className="text-sm font-medium">
+                            {linkedBR.priority_score.toFixed(1)}
+                          </span>
+                        ) : linkedBR ? (
+                          <span className="text-xs text-muted-foreground">
+                            {linkedBR.status === "submitted"
+                              ? "AI Processing..."
+                              : linkedBR.status}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {defect.status === "open" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => createBlockRequestFromDefect(defect)}
+                            disabled={isSubmitting || loading}
+                          >
+                            Request Block Now
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
       {selectedRequestId && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>AI Plan Options</CardTitle>
               <CardDescription>
-                Generated for request: <strong>{requests.find(r => r.id === selectedRequestId)?.work_type}</strong> on <strong>{getSegmentName(requests.find(r => r.id === selectedRequestId)?.segment_id, segments)}</strong>
+                Generated for request:{" "}
+                <strong>
+                  {requests.find((r) => r.id === selectedRequestId)?.work_type}
+                </strong>{" "}
+                on{" "}
+                <strong>
+                  {getSegmentName(
+                    requests.find((r) => r.id === selectedRequestId)?.segment_id,
+                    segments,
+                  )}
+                </strong>
               </CardDescription>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setSelectedRequestId(null)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedRequestId(null)}
+            >
               Clear Selection
             </Button>
           </CardHeader>
@@ -743,11 +1118,15 @@ export default function MaintenancePage() {
                   <div
                     key={opt.id}
                     className={`rounded-lg border p-4 space-y-3 ${
-                      opt.is_recommended ? "border-2 border-[#960DF2] bg-[#960DF2]/5" : ""
+                      opt.is_recommended
+                        ? "border-2 border-[#960DF2] bg-[#960DF2]/5"
+                        : ""
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold">{opt.option_label}</span>
+                      <span className="text-sm font-semibold">
+                        {opt.option_label}
+                      </span>
                       {opt.is_recommended && (
                         <Badge className="bg-[#960DF2] hover:bg-[#960DF2] text-white text-xs">
                           Recommended
@@ -760,7 +1139,9 @@ export default function MaintenancePage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-lg font-bold text-primary">
-                        {opt.priority_score != null ? Math.round(opt.priority_score) : "—"}
+                        {opt.priority_score != null
+                          ? Math.round(opt.priority_score)
+                          : "—"}
                       </span>
                       {opt.delay_risk && (
                         <Badge variant="outline">
@@ -769,7 +1150,9 @@ export default function MaintenancePage() {
                       )}
                     </div>
                     {opt.explanation && (
-                      <p className="text-sm text-muted-foreground">{opt.explanation}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {opt.explanation}
+                      </p>
                     )}
                     {opt.is_recommended && opt.what_if_note && (
                       <p className="text-sm italic text-muted-foreground border-t pt-2 mt-2">
@@ -782,7 +1165,10 @@ export default function MaintenancePage() {
             ) : (
               <div className="text-center py-8 text-muted-foreground">
                 <p className="font-medium">No plan options yet</p>
-                <p className="text-sm mt-1">AI processing may still be running. Click "Reprocess" in the table if stuck.</p>
+                <p className="text-sm mt-1">
+                  AI processing may still be running. Click "Reprocess" in the
+                  table if stuck.
+                </p>
               </div>
             )}
           </CardContent>
@@ -870,11 +1256,19 @@ export default function MaintenancePage() {
                       return (
                         <TableRow
                           key={request.id}
-                          className={`animate-fade-in ${canSelect ? "cursor-pointer hover:bg-muted/50" : ""} ${isSelected ? "bg-primary/5" : ""}`}
+                          className={`animate-fade-in ${
+                            canSelect
+                              ? "cursor-pointer hover:bg-muted/50"
+                              : ""
+                          } ${isSelected ? "bg-primary/5" : ""}`}
                           style={{
                             animationDelay: `${Math.min(index * 40, 400)}ms`,
                           }}
-                          onClick={canSelect ? () => setSelectedRequestId(request.id) : undefined}
+                          onClick={
+                            canSelect
+                              ? () => setSelectedRequestId(request.id)
+                              : undefined
+                          }
                         >
                           <TableCell>
                             {getSegmentName(request.segment_id, segments)}
@@ -937,11 +1331,20 @@ export default function MaintenancePage() {
                                 }}
                                 disabled={reprocessing[request.id]}
                               >
-                                {reprocessing[request.id] ? "Processing..." : "Reprocess"}
+                                {reprocessing[request.id] ? (
+                                  <>
+                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                    Processing...
+                                  </>
+                                ) : (
+                                  "Reprocess"
+                                )}
                               </Button>
                             )}
                             {request.status === "scored" && (
-                              <span className="text-xs text-muted-foreground">Click row for plan options</span>
+                              <span className="text-xs text-muted-foreground">
+                                Click row for plan options
+                              </span>
                             )}
                           </TableCell>
                         </TableRow>
@@ -957,12 +1360,3 @@ export default function MaintenancePage() {
     </div>
   )
 }
-
-function formatFromTimestamp(dateString: string): string {
-  const date = new Date(dateString)
-  if (isNaN(date.getTime())) {
-    return toDateTimeLocal(new Date())
-  }
-  return toDateTimeLocal(date)
-}
-
