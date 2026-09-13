@@ -10,7 +10,7 @@ type UrgencyResult = {
   reasoning: string
 }
 
-async function openRouterChat(
+export async function openRouterChat(
   system: string,
   user: string,
   model: string = "openrouter/auto"
