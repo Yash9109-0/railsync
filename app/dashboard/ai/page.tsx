@@ -4,14 +4,38 @@ import { createClient } from "@/lib/supabase/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
-import { ChevronDown, ChevronUp, Loader2, RefreshCw, ShieldAlert, AlertTriangle, Play, Check, X, Edit, Clock } from "lucide-react"
+import { ChevronDown, ChevronUp, Loader2, RefreshCw, ShieldAlert, AlertTriangle, Play, Check, X, Edit, Clock, CalendarDays } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { BlockRequest } from "@/lib/types"
 
 type BlockRequestRow = BlockRequest
+
+type HorizonRow = {
+  id: string
+  horizon_type: "weekly" | "monthly"
+  horizon_start: string
+  horizon_end: string
+  projected_availability_pct: number | null
+  summary_explanation: string | null
+  created_at: string
+}
+
+type HorizonItemRow = {
+  id: string
+  horizon_id: string
+  block_request_id: string
+  assigned_date: string | null
+  assigned_start_hour: number | null
+  assigned_duration_mins: number | null
+  priority_score: number | null
+  status: "scheduled" | "deferred"
+  reason: string | null
+}
 
 const supabase = createClient()
 
@@ -71,6 +95,29 @@ function formatDateTime(value: string) {
   })
 }
 
+function formatDate(value: string) {
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) return value
+  return new Date(parsed).toLocaleDateString("en-US", { dateStyle: "medium" })
+}
+
+function horizonStatusBadge(status: "scheduled" | "deferred" | null | undefined) {
+  switch (status) {
+    case "scheduled":
+      return "text-blue-700 dark:text-blue-400 bg-blue-500/10 border-blue-600/20"
+    case "deferred":
+      return "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-600/20"
+    default:
+      return "text-muted-foreground bg-muted/50"
+  }
+}
+
+function horizonTypeBadge(type: "weekly" | "monthly") {
+  return type === "weekly"
+    ? "text-blue-700 dark:text-blue-400 bg-blue-500/10 border-blue-600/20"
+    : "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-600/20"
+}
+
 export default function AiPage() {
   const [requests, setRequests] = useState<BlockRequestRow[]>([])
   const [optionsByRequest, setOptionsByRequest] = useState<Record<string, PlanOption[]>>({})
@@ -79,6 +126,17 @@ export default function AiPage() {
   const [reprocessing, setReprocessing] = useState<Record<string, boolean>>({})
 const [sweeping, setSweeping] = useState(false)
   const [processing, setProcessing] = useState<Record<string, boolean>>({})
+
+  const [horizonType, setHorizonType] = useState<"weekly" | "monthly">("weekly")
+  const [horizonStartDate, setHorizonStartDate] = useState(() =>
+    new Date().toISOString().split("T")[0]
+  )
+  const [horizons, setHorizons] = useState<HorizonRow[]>([])
+  const [horizonsLoading, setHorizonsLoading] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [expandedHorizon, setExpandedHorizon] = useState<string | null>(null)
+  const [horizonItems, setHorizonItems] = useState<Record<string, HorizonItemRow[]>>({})
+  const [horizonRequests, setHorizonRequests] = useState<Record<string, { id: string; work_description: string | null }>>({})
 
   const loadAll = async () => {
     setLoading(true)
@@ -208,6 +266,7 @@ const [sweeping, setSweeping] = useState(false)
   useEffect(() => {
     const init = async () => {
       await sweepStuckRequests(false)
+      await loadHorizons()
     }
     init()
   }, [])
@@ -244,6 +303,93 @@ const [sweeping, setSweeping] = useState(false)
 
   const toggleExpanded = (id: string) => {
     setExpanded((p) => ({ ...p, [id]: !p[id] }))
+  }
+
+  const loadHorizons = async () => {
+    setHorizonsLoading(true)
+    const { data, error } = await supabase
+      .from("block_plan_horizons")
+      .select("id, horizon_type, horizon_start, horizon_end, projected_availability_pct, summary_explanation, created_at")
+      .order("created_at", { ascending: false })
+    if (error) {
+      toast.error("Failed to load planning horizons")
+      setHorizons([])
+    } else {
+      setHorizons((data ?? []) as HorizonRow[])
+    }
+    setHorizonsLoading(false)
+  }
+
+  const handleGeneratePlan = async () => {
+    if (!horizonStartDate) return
+    setGenerating(true)
+    try {
+      const res = await fetch("/api/generate-horizon-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          horizonType,
+          startDate: new Date(horizonStartDate).toISOString(),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        toast.error(json.error ?? "Failed to generate plan")
+        return
+      }
+      toast.success("Plan generated successfully")
+      await loadHorizons()
+    } catch {
+      toast.error("Failed to generate plan")
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const loadHorizonDetails = async (id: string) => {
+    try {
+      const { data: itemsData, error: itemsErr } = await supabase
+        .from("block_plan_horizon_items")
+        .select("id, horizon_id, block_request_id, assigned_date, assigned_start_hour, assigned_duration_mins, priority_score, status, reason")
+        .eq("horizon_id", id)
+        .order("priority_score", { ascending: false })
+      if (itemsErr) {
+        toast.error("Failed to load horizon items")
+        return
+      }
+      const items = (itemsData ?? []) as HorizonItemRow[]
+      setHorizonItems((prev) => ({ ...prev, [id]: items }))
+
+      const reqIds = [...new Set(items.map((i) => i.block_request_id).filter(Boolean))]
+      if (reqIds.length > 0) {
+        const { data: reqData, error: reqErr } = await supabase
+          .from("block_requests")
+          .select("id, work_description")
+          .in("id", reqIds)
+        if (!reqErr && reqData) {
+          setHorizonRequests((prev) => {
+            const next = { ...prev }
+            for (const r of (reqData ?? []) as { id: string; work_description: string | null }[]) {
+              next[r.id] = r
+            }
+            return next
+          })
+        }
+      }
+    } catch (e) {
+      console.error("[dashboard/ai/horizon] details error:", e)
+    }
+  }
+
+  const toggleHorizonExpanded = (id: string) => {
+    if (expandedHorizon === id) {
+      setExpandedHorizon(null)
+    } else {
+      setExpandedHorizon(id)
+      if (!horizonItems[id]) {
+        loadHorizonDetails(id)
+      }
+    }
   }
 
   const renderOptionCard = (opt: PlanOption) => (
@@ -570,12 +716,147 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
     )
   }
 
+  const renderHorizonCard = (h: HorizonRow) => {
+    const isExpanded = expandedHorizon === h.id
+    const items = horizonItems[h.id] ?? []
+    const detailsLoaded = horizonItems[h.id] !== undefined
+    const isLoadingDetails = isExpanded && !detailsLoaded
+
+    const groups: Record<string, HorizonItemRow[]> = {}
+    for (const item of items) {
+      const dateKey = item.assigned_date ?? "Deferred (no date)"
+      if (!groups[dateKey]) groups[dateKey] = []
+      groups[dateKey].push(item)
+    }
+    const groupKeys = Object.keys(groups).sort((a, b) => {
+      if (a === "Deferred (no date)") return 1
+      if (b === "Deferred (no date)") return -1
+      return a.localeCompare(b)
+    })
+
+    return (
+      <Card key={h.id}>
+        <CardContent className="pt-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="outline" className={horizonTypeBadge(h.horizon_type)}>
+                  {h.horizon_type === "weekly" ? "Weekly" : "Monthly"}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {formatDate(h.horizon_start)} → {formatDate(h.horizon_end)}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Created {formatDateTime(h.created_at)}
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground line-clamp-2">
+                {h.summary_explanation ?? "No summary available."}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="text-right">
+                <div className="text-2xl font-bold">
+                  {h.projected_availability_pct != null
+                    ? `${Math.round(h.projected_availability_pct)}%`
+                    : "—"}
+                </div>
+                <span className="text-xs text-muted-foreground">Availability</span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => toggleHorizonExpanded(h.id)}>
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {isExpanded && (
+            <div className="mt-5 space-y-4">
+              {h.summary_explanation && (
+                <p className="text-sm whitespace-pre-wrap">{h.summary_explanation}</p>
+              )}
+              {!detailsLoaded && isLoadingDetails && (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              )}
+              {detailsLoaded && items.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No items in this horizon.
+                </p>
+              )}
+              {detailsLoaded &&
+                items.length > 0 &&
+                groupKeys.map((date) => (
+                  <div key={date} className="space-y-2">
+                    <h3 className="text-sm font-semibold">{date}</h3>
+                    <div className="space-y-2">
+                      {groups[date].map((item) => {
+                        const req = horizonRequests[item.block_request_id]
+                        const desc =
+                          req?.work_description ??
+                          `Request ${item.block_request_id.slice(0, 8)}`
+                        return (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between gap-3 rounded-lg border p-3"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{desc}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Request ID: {item.block_request_id.slice(0, 8)}
+                                {item.assigned_start_hour != null && (
+                                  <> · Starts {item.assigned_start_hour}:00 UTC</>
+                                )}
+                                {item.assigned_duration_mins != null && (
+                                  <> · {item.assigned_duration_mins} min</>
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {item.priority_score != null && (
+                                <span className="text-sm font-medium">
+                                  {Math.round(item.priority_score)}
+                                </span>
+                              )}
+                              <Badge
+                                variant="outline"
+                                className={horizonStatusBadge(item.status)}
+                              >
+                                {item.status}
+                              </Badge>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+
   const renderSkeleton = () => (
     <Skeleton className="h-40 w-full" />
   )
 
   return (
-    <div className="space-y-6">
+    <Tabs defaultValue="per-request" className="space-y-6">
+      <TabsList>
+        <TabsTrigger value="per-request">Per-Request AI</TabsTrigger>
+        <TabsTrigger value="planning">Weekly/Monthly Planning</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="per-request" className="mt-0">
+      <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">AI Priority & Scoring</h1>
@@ -659,7 +940,84 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
           )}
         </div>
       )}
-    </div>
+      </div>
+      </TabsContent>
+
+      <TabsContent value="planning" className="mt-0">
+        <div className="space-y-6">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+                <div className="flex-1 min-w-[200px]">
+                  <label htmlFor="horizon-start-date" className="text-sm font-medium">
+                    Start Date
+                  </label>
+                  <Input
+                    id="horizon-start-date"
+                    type="date"
+                    value={horizonStartDate}
+                    onChange={(e) => setHorizonStartDate(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant={horizonType === "weekly" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setHorizonType("weekly")}
+                  >
+                    Weekly
+                  </Button>
+                  <Button
+                    variant={horizonType === "monthly" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setHorizonType("monthly")}
+                  >
+                    Monthly
+                  </Button>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={!horizonStartDate || generating}
+                  onClick={handleGeneratePlan}
+                >
+                  {generating ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
+                      Generate Plan
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {horizonsLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-32 w-full" />
+              ))}
+            </div>
+          ) : horizons.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-center text-muted-foreground">
+                  No planning horizons generated yet.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {horizons.map(renderHorizonCard)}
+            </div>
+          )}
+        </div>
+      </TabsContent>
+    </Tabs>
   )
 }
 
