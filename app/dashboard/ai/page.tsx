@@ -22,7 +22,7 @@ type HorizonRow = {
   horizon_end: string
   projected_availability_pct: number | null
   summary_explanation: string | null
-  created_at: string
+  generated_at: string
 }
 
 type HorizonItemRow = {
@@ -265,6 +265,7 @@ const [sweeping, setSweeping] = useState(false)
 
   useEffect(() => {
     const init = async () => {
+      await loadAll()
       await sweepStuckRequests(false)
       await loadHorizons()
     }
@@ -307,15 +308,18 @@ const [sweeping, setSweeping] = useState(false)
 
   const loadHorizons = async () => {
     setHorizonsLoading(true)
-    const { data, error } = await supabase
-      .from("block_plan_horizons")
-      .select("id, horizon_type, horizon_start, horizon_end, projected_availability_pct, summary_explanation, created_at")
-      .order("created_at", { ascending: false })
-    if (error) {
+    try {
+      const res = await fetch("/api/horizons", { cache: "no-store" })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        toast.error(json.error ?? "Failed to load planning horizons")
+        setHorizons([])
+      } else {
+        setHorizons((json.horizons ?? []) as HorizonRow[])
+      }
+    } catch {
       toast.error("Failed to load planning horizons")
       setHorizons([])
-    } else {
-      setHorizons((data ?? []) as HorizonRow[])
     }
     setHorizonsLoading(false)
   }
@@ -348,36 +352,20 @@ const [sweeping, setSweeping] = useState(false)
 
   const loadHorizonDetails = async (id: string) => {
     try {
-      const { data: itemsData, error: itemsErr } = await supabase
-        .from("block_plan_horizon_items")
-        .select("id, horizon_id, block_request_id, assigned_date, assigned_start_hour, assigned_duration_mins, priority_score, status, reason")
-        .eq("horizon_id", id)
-        .order("priority_score", { ascending: false })
-      if (itemsErr) {
-        toast.error("Failed to load horizon items")
+      const res = await fetch(`/api/horizon-items?horizonId=${id}`, { cache: "no-store" })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        toast.error(json.error ?? "Failed to load horizon items")
         return
       }
-      const items = (itemsData ?? []) as HorizonItemRow[]
+      const items = (json.items ?? []) as HorizonItemRow[]
       setHorizonItems((prev) => ({ ...prev, [id]: items }))
 
-      const reqIds = [...new Set(items.map((i) => i.block_request_id).filter(Boolean))]
-      if (reqIds.length > 0) {
-        const { data: reqData, error: reqErr } = await supabase
-          .from("block_requests")
-          .select("id, work_description")
-          .in("id", reqIds)
-        if (!reqErr && reqData) {
-          setHorizonRequests((prev) => {
-            const next = { ...prev }
-            for (const r of (reqData ?? []) as { id: string; work_description: string | null }[]) {
-              next[r.id] = r
-            }
-            return next
-          })
-        }
+      for (const r of (json.requests ?? []) as { id: string; work_description: string | null }[]) {
+        setHorizonRequests((prev) => ({ ...prev, [r.id]: r }))
       }
-    } catch (e) {
-      console.error("[dashboard/ai/horizon] details error:", e)
+    } catch {
+      toast.error("Failed to load horizon details")
     }
   }
 
@@ -747,7 +735,7 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
                   {formatDate(h.horizon_start)} → {formatDate(h.horizon_end)}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  Created {formatDateTime(h.created_at)}
+                  Created {formatDateTime(h.generated_at)}
                 </span>
               </div>
               <p className="text-sm text-muted-foreground line-clamp-2">
