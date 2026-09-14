@@ -30,6 +30,14 @@ import {
   TabsTrigger,
 } from "@/components/ui";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   BarChart,
   Bar,
   XAxis,
@@ -70,6 +78,11 @@ import type {
 } from "@/lib/types";
 import type { User } from "@supabase/supabase-js";
 
+type PlanOptionWithLabel = BlockPlanOption & {
+  option_label?: string | null;
+  is_recommended?: boolean | null;
+};
+
 interface SegmentName {
   name: string;
 }
@@ -94,12 +107,6 @@ interface BlockRequestRow {
   ai_explanation: string | null;
   created_at: string;
   segments: SegmentName | null;
-  block_plan_options:
-    | (BlockPlanOption & {
-        option_label?: string | null;
-        is_recommended?: boolean | null;
-      })[]
-    | null;
   block_plan_options: PlanOptionWithLabel[] | null;
 }
 interface ApprovalRow {
@@ -132,7 +139,6 @@ interface VerifyLogRow {
     segments: { name: string } | null;
   } | null;
 }
-
 const POLL_INTERVAL_MS = 30_000;
 const MANUAL_BASELINE_MINS = 18;
 
@@ -304,13 +310,7 @@ interface AnalyticsSummary {
   avg_priority_score: number;
 }
 
-// block_plan_options carries an extra runtime `option_label` column (not declared
-// in lib/types); extend the shape so it is visible to the breakdown logic.
-interface PlanOptionWithLabel extends BlockPlanOption {
-  option_label?: string | null;
-  is_recommended?: boolean | null;
-  [key: string]: unknown;
-}
+
 
 interface ApprovedPlanRow {
   id: string;
