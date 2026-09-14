@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Train } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 
 export interface TimetableEntry {
   train_number: string;
@@ -41,7 +42,7 @@ const PADDING = 80;
 const TRACK_LEN = VIEW_W - 2 * PADDING;
 const SEG_LEN = TRACK_LEN / NUM_SEGMENTS;
 const stationX = (i: number) => PADDING + SEG_LEN * i;
-const STATION_R = 12;
+const STATION_R = 16;
 const LABEL_Y = 205;
 
 interface ComputedTrain {
@@ -155,160 +156,211 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
   }, [trains]);
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground">
-        {TRACKS.map((track) => (
-          <span key={track.id}>{track.label}</span>
-        ))}
-      </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <span>Live Corridor View</span>
+          <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
+            </span>
+            <span>Live</span>
+          </span>
+        </CardTitle>
+      </CardHeader>
 
-      <div className="relative w-full max-w-3xl mx-auto aspect-[3/1]">
-        <svg
-          className="absolute inset-0 h-full w-full"
-          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-          role="img"
-          aria-label="Live corridor track map with 3 parallel tracks"
-        >
-          <title>Live Corridor Track Map</title>
-          <desc>
-            Three parallel railway tracks (UP Main, DOWN Main, Loop/Siding)
-            with stations STN1 through STN5. Green signal dots indicate clear
-            segments; red dots indicate segments occupied by a train.
-          </desc>
-
+      <CardContent className="space-y-2">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground">
           {TRACKS.map((track) => (
-            <g
-              key={`lines-${track.id}`}
-              strokeWidth={6}
-              strokeLinecap="round"
-              className="stroke-gray-300"
-            >
-              {Array.from({ length: NUM_SEGMENTS }).map((_, i) => (
-                <line
-                  key={`line-${track.id}-${i}`}
-                  x1={stationX(i)}
-                  y1={track.y}
-                  x2={stationX(i + 1)}
-                  y2={track.y}
-                />
-              ))}
-            </g>
+            <span key={track.id}>{track.label}</span>
           ))}
+        </div>
 
-          {TRACKS.map((track) => (
+        <div className="relative w-full max-w-3xl mx-auto aspect-[3/1]">
+          <svg
+            className="absolute inset-0 h-full w-full"
+            viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+            role="img"
+            aria-label="Live corridor track map with 3 parallel tracks"
+          >
+            <title>Live Corridor Track Map</title>
+            <desc>
+              Three parallel railway tracks (UP Main, DOWN Main, Loop/Siding)
+              with stations STN1 through STN5. Green signal dots indicate clear
+              segments; red dots indicate segments occupied by a train.
+            </desc>
+
+            {TRACKS.map((track) => (
+              <g
+                key={`lines-${track.id}`}
+                strokeWidth={4}
+                strokeLinecap="round"
+                className="stroke-gray-300"
+              >
+                {Array.from({ length: NUM_SEGMENTS }).map((_, i) => (
+                  <line
+                    key={`line-${track.id}-${i}`}
+                    x1={stationX(i)}
+                    y1={track.y}
+                    x2={stationX(i + 1)}
+                    y2={track.y}
+                  />
+                ))}
+              </g>
+            ))}
+
+            {TRACKS.map((track) => (
+              <text
+                key={`tlabel-${track.id}`}
+                x={10}
+                y={track.y + 4}
+                fontSize={11}
+                className="fill-gray-500"
+              >
+                T{track.id === "up" ? 1 : track.id === "down" ? 2 : 3}
+              </text>
+            ))}
+
+            {TRACKS.map((track) =>
+              Array.from({ length: NUM_SEGMENTS }).map((_, i) => {
+                const midX = (stationX(i) + stationX(i + 1)) / 2;
+                const isOccupied = occupied[track.id].has(i);
+                return (
+                  <g key={`signal-${track.id}-${i}`}>
+                    {!isOccupied && (
+                      <circle
+                        cx={midX}
+                        cy={track.signalY}
+                        r={10}
+                        className="fill-green-500/30"
+                      />
+                    )}
+                    <circle
+                      cx={midX}
+                      cy={track.signalY}
+                      r={6}
+                      className={
+                        isOccupied
+                          ? "fill-red-500 animate-pulse drop-shadow-[0_0_6px_rgba(239,68,68,0.9)]"
+                          : "fill-green-500 drop-shadow-[0_0_6px_rgba(34,197,94,0.9)]"
+                      }
+                    />
+                  </g>
+                );
+              }),
+            )}
+
+            {TRACKS.map((track) =>
+              STATIONS.map((_, i) => (
+                <g key={`station-${track.id}-${i}`}>
+                  <circle
+                    cx={stationX(i)}
+                    cy={track.y}
+                    r={22}
+                    className="fill-[#960DF2]/20"
+                  />
+                  <circle
+                    cx={stationX(i)}
+                    cy={track.y}
+                    r={STATION_R}
+                    className="fill-white stroke-[#960DF2] stroke-2 drop-shadow-[0_0_8px_rgba(150,13,255,0.3)]"
+                  />
+                </g>
+              )),
+            )}
+
+            {STATIONS.map((label, i) => (
+              <text
+                key={`stationlabel-${label}`}
+                x={stationX(i)}
+                y={LABEL_Y}
+                textAnchor="middle"
+                fontSize={13}
+                fontWeight={700}
+                className="fill-gray-700"
+              >
+                {label}
+              </text>
+            ))}
+
             <text
-              key={`tlabel-${track.id}`}
-              x={10}
-              y={track.y + 4}
-              fontSize={11}
+              x={VIEW_W - PADDING}
+              y={LABEL_Y}
+              textAnchor="end"
+              fontSize={12}
               className="fill-gray-500"
             >
-              T{track.id === "up" ? 1 : track.id === "down" ? 2 : 3}
+              {trains.length > 0
+                ? `${trains.length} active train${trains.length === 1 ? "" : "s"}`
+                : "No active trains"}
             </text>
-          ))}
+          </svg>
 
-          {TRACKS.map((track) =>
-            Array.from({ length: NUM_SEGMENTS }).map((_, i) => {
-              const midX = (stationX(i) + stationX(i + 1)) / 2;
-              const isOccupied = occupied[track.id].has(i);
-              return (
-                <circle
-                  key={`signal-${track.id}-${i}`}
-                  cx={midX}
-                  cy={track.signalY}
-                  r={6}
-                  className={
-                    isOccupied ? "fill-red-500" : "fill-green-500"
-                  }
-                />
-              );
-            }),
-          )}
+          {trains.map((t) => {
+            const x = stationX(t.segmentIndex) + t.progress * SEG_LEN;
+            const track = TRACKS.find((tr) => tr.id === t.track);
+            const y = track ? track.y : 0;
+            const trackLabel = track ? track.label : "Track";
+            return (
+              <div
+                key={t.train_number}
+                aria-label={`Train ${t.train_number} on ${trackLabel}, segment ${t.segmentIndex + 1}`}
+                className="pointer-events-none"
+              >
+                {[3, 2, 1].map((k) => (
+                  <div
+                    key={`trail-${t.train_number}-${k}`}
+                    className="absolute z-0 flex items-center"
+                    style={{
+                      left: `${((x - (SEG_LEN / 30) * k) / VIEW_W) * 100}%`,
+                      top: `${(y / VIEW_H) * 100}%`,
+                      transform: "translate(-50%, -50%)",
+                      opacity: 1 - k * 0.25,
+                    }}
+                  >
+                    <Train className="h-4 w-4 text-blue-600" />
+                  </div>
+                ))}
+                <div
+                  className="absolute z-10 flex items-center gap-1"
+                  style={{
+                    left: `${(x / VIEW_W) * 100}%`,
+                    top: `${(y / VIEW_H) * 100}%`,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                >
+                  <Train className="h-5 w-5 text-blue-600 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]" />
+                  <span className="text-xs font-medium text-blue-700 whitespace-nowrap">
+                    {t.train_number}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
 
-          {TRACKS.map((track) =>
-            STATIONS.map((_, i) => (
-              <circle
-                key={`station-${track.id}-${i}`}
-                cx={stationX(i)}
-                cy={track.y}
-                r={STATION_R}
-                className="fill-white stroke-gray-400 stroke-2"
-              />
-            )),
-          )}
-
-          {STATIONS.map((label, i) => (
-            <text
-              key={`stationlabel-${label}`}
-              x={stationX(i)}
-              y={LABEL_Y}
-              textAnchor="middle"
-              fontSize={13}
-              fontWeight={600}
-              className="fill-gray-700"
-            >
-              {label}
-            </text>
-          ))}
-
-          <text
-            x={VIEW_W - PADDING}
-            y={LABEL_Y}
-            textAnchor="end"
-            fontSize={12}
-            className="fill-gray-500"
-          >
-            {trains.length > 0
-              ? `${trains.length} active train${trains.length === 1 ? "" : "s"}`
-              : "No active trains"}
-          </text>
-        </svg>
-
-        {trains.map((t) => {
-          const x = stationX(t.segmentIndex) + t.progress * SEG_LEN;
-          const track = TRACKS.find((tr) => tr.id === t.track);
-          const y = track ? track.y : 0;
-          const trackLabel = track ? track.label : "Track";
-          return (
-            <div
-              key={t.train_number}
-              className="absolute z-10 flex items-center gap-1 pointer-events-none"
-              style={{
-                left: `${(x / VIEW_W) * 100}%`,
-                top: `${(y / VIEW_H) * 100}%`,
-                transform: "translate(-50%, -50%)",
-              }}
-              aria-label={`Train ${t.train_number} on ${trackLabel}, segment ${t.segmentIndex + 1}`}
-            >
-              <Train className="h-5 w-5 text-blue-600" />
-              <span className="text-xs font-medium text-blue-700 whitespace-nowrap">
-                {t.train_number}
-              </span>
+          {trains.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+              No active trains on the corridor right now
             </div>
-          );
-        })}
+          )}
+        </div>
 
-        {trains.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-            No active trains on the corridor right now
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-green-500" />
-          <span>Signal Clear</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-red-500" />
-          <span>Signal Occupied</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Train className="h-4 w-4 text-blue-600" />
-          <span>Train</span>
-        </span>
-      </div>
-    </div>
+        <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-full bg-green-500" />
+            <span>Signal Clear</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-full bg-red-500" />
+            <span>Signal Occupied</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Train className="h-4 w-4 text-blue-600" />
+            <span>Train</span>
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

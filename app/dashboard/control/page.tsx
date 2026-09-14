@@ -994,7 +994,12 @@ useEffect(() => {
 
         <TabsContent value="timetable" className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Live Timetable</h2>
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              Live Timetable
+              <Badge variant="outline" className="gap-1.5 border-green-200 text-green-700">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Live
+              </Badge>
+            </h2>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75"></span>
@@ -1033,7 +1038,7 @@ useEffect(() => {
                     </div>
                   </div>
                   <Badge variant={statusVariant(train.status)} className="gap-1.5 capitalize">
-                    <span className={`w-2 h-2 rounded-full ${train.status === "delayed" || train.status === "cancelled" ? "bg-amber-500" : "bg-emerald-500 animate-pulse"}`}></span>
+                    <span className={`w-2 h-2 rounded-full ${train.status === "delayed" || train.status === "cancelled" ? "bg-amber-500 animate-pulse" : "bg-emerald-500 animate-pulse"}`}></span>
                     {statusLabel(train.status)}
                   </Badge>
                 </div>
