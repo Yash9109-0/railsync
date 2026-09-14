@@ -1039,6 +1039,7 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
         </div>
       </TabsContent>
     </Tabs>
+    </div>
   )
 }
 

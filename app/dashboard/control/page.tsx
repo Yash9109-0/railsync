@@ -94,7 +94,7 @@ interface BlockRequestRow {
   ai_explanation: string | null;
   created_at: string;
   segments: SegmentName | null;
-  block_plan_options: BlockPlanOption[] | null;
+  block_plan_options: PlanOptionWithLabel[] | null;
 }
 interface ApprovalRow {
   id: string;
@@ -277,10 +277,7 @@ interface AnalyticsSummary {
 
 // block_plan_options carries an extra runtime `option_label` column (not declared
 // in lib/types); extend the shape so it is visible to the breakdown logic.
-interface PlanOptionWithLabel {
-  id: string;
-  block_request_id: string;
-  adjusted_duration_mins: number | null;
+interface PlanOptionWithLabel extends BlockPlanOption {
   option_label?: string | null;
   is_recommended?: boolean | null;
   [key: string]: unknown;
@@ -1446,6 +1443,7 @@ useEffect(() => {
 
         <TabsContent value="horizons" className="space-y-3">
           <HorizonPlanReview />
+        </TabsContent>
         <TabsContent value="corridor" className="space-y-3">
           <CorridorAvailability />
         </TabsContent>
