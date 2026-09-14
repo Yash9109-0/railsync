@@ -8,10 +8,10 @@ import {
   Button,
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
+  CircularGauge,
+  type GaugeColor,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -25,9 +25,13 @@ import {
 import {
   CalendarClock,
   Check,
+  CheckCircle,
   ClipboardList,
+  Clock,
   Loader2,
   RefreshCw,
+  Sparkles,
+  TrendingUp,
 } from "lucide-react"
 
 type HorizonType = "weekly" | "monthly"
@@ -70,18 +74,6 @@ function cap(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
-function fmtDateRange(start: string, end: string): string {
-  const s = new Date(start)
-  const e = new Date(end)
-  if (isNaN(s.getTime()) && isNaN(e.getTime())) return "—"
-  const opts: Intl.DateTimeFormatOptions = {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }
-  return `${s.toLocaleDateString("en-US", opts)} – ${e.toLocaleDateString("en-US", opts)}`
-}
-
 function fmtDateTime(iso: string): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return "—"
@@ -120,9 +112,32 @@ function fmtDuration(mins: number | null): string {
   return h > 0 ? `${h}h ${rest}m` : `${rest} min`
 }
 
-function fmtPct(n: number | null): string {
-  if (n == null || Number.isNaN(Number(n))) return "—"
-  return Number.isInteger(n) ? `${n}%` : `${n.toFixed(1)}%`
+function availabilityColorClass(pct: number | null): GaugeColor {
+  if (pct == null || Number.isNaN(Number(pct))) return "muted"
+  const p = Number(pct)
+  if (p >= 90) return "success"
+  if (p >= 50) return "warning"
+  return "destructive"
+}
+
+function fmtDateRangeShort(start: string, end: string): string {
+  const s = new Date(start)
+  const e = new Date(end)
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return "—"
+  const sameYear = s.getFullYear() === e.getFullYear()
+  const sameMonth = sameYear && s.getMonth() === e.getMonth()
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" }
+  const sStr = s.toLocaleDateString("en-US", opts)
+  const eStr = e.toLocaleDateString("en-US", sameMonth ? opts : { ...opts, year: "numeric" })
+  return `${sStr} – ${eStr}`
+}
+
+function horizonTypeIcon(type: HorizonType) {
+  return type === "weekly" ? (
+    <CalendarClock className="h-3.5 w-3.5" />
+  ) : (
+    <TrendingUp className="h-3.5 w-3.5" />
+  )
 }
 
 function priorityTier(score: number | null): string | null {
@@ -202,6 +217,15 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
     [items],
   )
   const scheduledCount = scheduledItems.length
+  const scheduledSegments = useMemo(
+    () =>
+      new Set(
+        scheduledItems.map(
+          (i) => i.block_requests?.segments?.name ?? "Unassigned",
+        ),
+      ).size,
+    [scheduledItems],
+  )
 
   const groups = useMemo(
     () =>
@@ -307,46 +331,47 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
   }
 
   const statusBadge = itemStatusBadge(horizon.status ?? "")
+  const availColor = availabilityColorClass(horizon.projected_availability_pct)
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Badge className={HORIZON_TYPE_BADGE[horizon.horizon_type]}>
-                {cap(horizon.horizon_type)}
-              </Badge>
-              <CalendarClock className="h-4 w-4 text-muted-foreground" />
-              {fmtDateRange(horizon.horizon_start, horizon.horizon_end)}
-              <Badge className={statusBadge.className}>{statusBadge.label}</Badge>
-            </CardTitle>
-            <CardDescription className="max-w-[65ch]">
-              {horizon.summary_explanation ?? "No plan narrative available."}
-            </CardDescription>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span>Generated {fmtDateTime(horizon.generated_at)}</span>
-              <Separator orientation="vertical" className="h-3" />
-              <span>
-                {scheduledCount} scheduled · {items.length - scheduledCount} deferred
-              </span>
-              <Separator orientation="vertical" className="h-3" />
-              <span>
-                Availability goal met:{" "}
-                {horizon.projected_availability_pct != null
-                  ? `${horizon.projected_availability_pct}%`
-                  : "—"}
-              </span>
-            </div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Badge className={HORIZON_TYPE_BADGE[horizon.horizon_type]}>
+              {horizonTypeIcon(horizon.horizon_type)}
+              {cap(horizon.horizon_type)}
+            </Badge>
+            <Badge className={statusBadge.className}>{statusBadge.label}</Badge>
+            <span className="text-sm font-medium text-muted-foreground">
+              {fmtDateRangeShort(horizon.horizon_start, horizon.horizon_end)}
+            </span>
           </div>
-          <div className="mt-2 text-right sm:mt-0">
-            <div className="text-3xl font-bold tabular-nums">
-              {fmtPct(horizon.projected_availability_pct)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Projected availability
-            </p>
-          </div>
+          <CircularGauge
+            value={horizon.projected_availability_pct}
+            size={84}
+            strokeWidth={7}
+            label="Projected availability"
+            color={availColor}
+          />
+        </div>
+
+        <div className="mt-3 flex items-start gap-2 rounded-lg border bg-muted/40 p-3">
+          <Sparkles className="mt-0.5 h-4 w-4 text-primary/70 shrink-0" />
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {horizon.summary_explanation ?? "No plan narrative available."}
+          </p>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            Generated {fmtDateTime(horizon.generated_at)}
+          </span>
+          <Separator orientation="vertical" className="h-3" />
+          <span>
+            {scheduledCount} scheduled · {items.length - scheduledCount} deferred
+          </span>
         </div>
       </CardHeader>
 
@@ -462,15 +487,27 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
                 <Check className="h-4 w-4" />
               )}
               <span className="ml-1">
-                {submitting ? "Approving…" : "Approve This Plan"}
+                {submitting ? (
+                  "Approving…"
+                ) : (
+                  <span className="inline-flex items-center">
+                    Approve{" "}
+                    <Badge
+                      variant="secondary"
+                      className="mx-0.5 min-w-[1.25rem] justify-center font-mono"
+                    >
+                      {scheduledCount}
+                    </Badge>{" "}
+                    Plan{scheduledCount === 1 ? "" : "s"}
+                  </span>
+                )}
               </span>
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                Approve this entire {cap(horizon.horizon_type)} plan covering{" "}
-                {scheduledCount} request{scheduledCount === 1 ? "" : "s"}?
+                Approve this entire {cap(horizon.horizon_type)} plan?
               </DialogTitle>
               <DialogDescription>
                 This records an approval for each scheduled request — setting its
@@ -478,6 +515,16 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
                 approved status. Deferred requests are left unscheduled.
               </DialogDescription>
             </DialogHeader>
+              {scheduledCount > 0 ? (
+                <div className="mt-3 flex items-center gap-2.5 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
+                  <CheckCircle className="h-4 w-4 text-success shrink-0" />
+                  <span>
+                    <span className="font-medium text-foreground">{scheduledCount}</span> scheduled across{" "}
+                    <span className="font-medium text-foreground">{scheduledSegments}</span> segment
+                    {scheduledSegments === 1 ? "" : "s"}
+                  </span>
+                </div>
+              ) : null}
             <DialogFooter>
               <Button
                 variant="outline"
@@ -497,7 +544,19 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
                   <Check className="h-4 w-4" />
                 )}
                 <span className="ml-1">
-                  {submitting ? "Approving…" : "Approve All"}
+                  {submitting ? (
+                    "Approving…"
+                  ) : (
+                    <span className="inline-flex items-center">
+                      Approve All{" "}
+                      <Badge
+                        variant="secondary"
+                        className="mx-0.5 min-w-[1.25rem] justify-center font-mono"
+                      >
+                        {scheduledCount}
+                      </Badge>
+                    </span>
+                  )}
                 </span>
               </Button>
             </DialogFooter>

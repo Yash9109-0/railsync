@@ -6,33 +6,18 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DashboardPageHeader } from "@/components/dashboard-page-header"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
 import { ChevronDown, ChevronUp, Loader2, RefreshCw, ShieldAlert, AlertTriangle, Play, Check, X, Edit, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { BlockRequest } from "@/lib/types"
-import HorizonPlanningCalendar from "@/components/HorizonPlanningCalendar"
+import type { BlockRequest, PlanOption } from "@/lib/types"
 
 type BlockRequestRow = BlockRequest
-
-type PlanOption = {
-  id: string
-  block_request_id: string
-  option_label: string
-  is_recommended?: boolean | null
-  adjusted_start: string
-  adjusted_duration_mins?: number | null
-  priority_score?: number | null
-  delay_risk?: string | null
-  explanation?: string | null
-  what_if_note?: string | null
-}
 
 const supabase = createClient()
 
 function delayRiskBadge(risk: string | null | undefined) {
-  const r = (risk?? "").toLowerCase()
+  const r = (risk ?? "").toLowerCase()
   switch (r) {
     case "low":
       return "text-green-700 dark:text-green-400 bg-green-500/10 border-green-600/20"
@@ -46,7 +31,7 @@ function delayRiskBadge(risk: string | null | undefined) {
 }
 
 function safetyBadge(criticality: string | null | undefined) {
-  const c = (criticality?? "").toLowerCase()
+  const c = (criticality ?? "").toLowerCase()
   switch (c) {
     case "critical":
     case "safety_critical":
@@ -65,7 +50,7 @@ function safetyBadge(criticality: string | null | undefined) {
 }
 
 function departmentBadge(dept: string | null | undefined) {
-  const d = (dept?? "").toUpperCase()
+  const d = (dept ?? "").toUpperCase()
   switch (d) {
     case "TMS":
       return "text-blue-700 dark:text-blue-400 bg-blue-500/10 border-blue-600/20"
@@ -87,7 +72,7 @@ function formatDateTime(value: string) {
   })
 }
 
-export default function AiPage() {
+export default function ScoredRequestsBoard() {
   const [requests, setRequests] = useState<BlockRequestRow[]>([])
   const [optionsByRequest, setOptionsByRequest] = useState<Record<string, PlanOption[]>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -99,24 +84,24 @@ export default function AiPage() {
   const loadAll = async () => {
     setLoading(true)
     const { data, error } = await supabase
-     .from("block_requests")
-     .select("*")
-     .in("status", ["submitted", "pending", "scored", "safety_blocked"])
-     .order("created_at", { ascending: false })
+      .from("block_requests")
+      .select("*")
+      .in("status", ["submitted", "pending", "scored", "safety_blocked"])
+      .order("created_at", { ascending: false })
 
     if (error) {
       toast.error("Failed to load block requests")
       setRequests([])
       setOptionsByRequest({})
     } else {
-      const rows = (data?? []) as BlockRequestRow[]
+      const rows = (data ?? []) as BlockRequestRow[]
       setRequests(rows)
 
       if (rows.length > 0) {
         const { data: optData, error: optError } = await supabase
-         .from("block_plan_options")
-         .select("*")
-         .in(
+          .from("block_plan_options")
+          .select("*")
+          .in(
             "block_request_id",
             rows.map((r) => r.id)
           )
@@ -125,7 +110,7 @@ export default function AiPage() {
           toast.error("Failed to load plan options")
         } else {
           const grouped: Record<string, PlanOption[]> = {}
-          for (const opt of (optData?? []) as PlanOption[]) {
+          for (const opt of (optData ?? []) as PlanOption[]) {
             if (!grouped[opt.block_request_id]) grouped[opt.block_request_id] = []
             grouped[opt.block_request_id].push(opt)
           }
@@ -137,7 +122,7 @@ export default function AiPage() {
   }
 
   const processRequest = async (id: string) => {
-    setProcessing((p) => ({...p, [id]: true }))
+    setProcessing((p) => ({ ...p, [id]: true }))
     try {
       const res = await fetch("/api/block-requests", {
         method: "POST",
@@ -146,7 +131,7 @@ export default function AiPage() {
       })
       const json = await res.json()
       if (!res.ok || json.error) {
-        toast.error(json.error?? "AI processing failed")
+        toast.error(json.error ?? "AI processing failed")
         return
       }
       toast.success("AI analysis complete")
@@ -154,7 +139,7 @@ export default function AiPage() {
     } catch {
       toast.error("AI processing failed")
     } finally {
-      setProcessing((p) => ({...p, [id]: false }))
+      setProcessing((p) => ({ ...p, [id]: false }))
     }
   }
 
@@ -163,12 +148,12 @@ export default function AiPage() {
       const { error } = await supabase.from("approvals").insert({
         block_request_id: requestId,
         decision,
-        modified_start: modifiedStart?? null,
-        modified_duration_mins: modifiedDuration?? null,
+        modified_start: modifiedStart ?? null,
+        modified_duration_mins: modifiedDuration ?? null,
       })
       if (error) throw error
 
-      const newStatus = decision === "approved"? "approved" : decision === "rejected"? "rejected" : "pending"
+      const newStatus = decision === "approved" ? "approved" : decision === "rejected" ? "rejected" : "pending"
       await supabase.from("block_requests").update({ status: newStatus }).eq("id", requestId)
 
       toast.success(`Request ${decision}`)
@@ -182,16 +167,16 @@ export default function AiPage() {
     setSweeping(true)
     try {
       const { data: stuckRequests, error: fetchError } = await supabase
-       .from("block_requests")
-       .select("id")
-       .eq("status", "submitted")
+        .from("block_requests")
+        .select("id")
+        .eq("status", "submitted")
 
       if (fetchError) {
         toast.error("Failed to fetch stuck requests")
         return 0
       }
 
-      const stuckIds = (stuckRequests?? []).map((r) => r.id)
+      const stuckIds = (stuckRequests ?? []).map((r) => r.id)
       if (stuckIds.length === 0) {
         if (showToast) toast.info("No stuck requests found")
         return 0
@@ -210,7 +195,7 @@ export default function AiPage() {
       await loadAll()
 
       if (showToast) {
-        toast.success(`Processed ${stuckIds.length} stuck request${stuckIds.length!== 1? "s" : ""}`)
+        toast.success(`Processed ${stuckIds.length} stuck request${stuckIds.length !== 1 ? "s" : ""}`)
       }
       return stuckIds.length
     } catch {
@@ -223,14 +208,13 @@ export default function AiPage() {
 
   useEffect(() => {
     const init = async () => {
-      await loadAll()
       await sweepStuckRequests(false)
     }
     init()
   }, [])
 
   const handleReprocess = async (id: string) => {
-    setReprocessing((p) => ({...p, [id]: true }))
+    setReprocessing((p) => ({ ...p, [id]: true }))
     try {
       const res = await fetch("/api/block-requests", {
         method: "POST",
@@ -239,7 +223,7 @@ export default function AiPage() {
       })
       const json = await res.json()
       if (!res.ok || json.error) {
-        toast.error(json.error?? "Reprocessing failed")
+        toast.error(json.error ?? "Reprocessing failed")
         return
       }
       toast.success("Reprocessed successfully")
@@ -247,20 +231,20 @@ export default function AiPage() {
     } catch {
       toast.error("Reprocessing failed")
     } finally {
-      setReprocessing((p) => ({...p, [id]: false }))
+      setReprocessing((p) => ({ ...p, [id]: false }))
     }
   }
 
   const safetyBlocked = requests.filter((r) => r.status === "safety_blocked")
   const scored = requests
-   .filter((r) => r.status === "scored")
-   .sort((a, b) => (b.priority_score?? -Infinity) - (a.priority_score?? -Infinity))
+    .filter((r) => r.status === "scored")
+    .sort((a, b) => (b.priority_score ?? -Infinity) - (a.priority_score ?? -Infinity))
   const pending = requests
-   .filter((r) => r.status === "submitted" || r.status === "pending")
-   .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    .filter((r) => r.status === "submitted" || r.status === "pending")
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
 
   const toggleExpanded = (id: string) => {
-    setExpanded((p) => ({...p, [id]:!p[id] }))
+    setExpanded((p) => ({ ...p, [id]: !p[id] }))
   }
 
   const renderOptionCard = (opt: PlanOption) => (
@@ -281,11 +265,11 @@ export default function AiPage() {
       </div>
       <div className="text-sm text-muted-foreground">
         <span suppressHydrationWarning>{formatDateTime(opt.adjusted_start)}</span> ·{" "}
-        {opt.adjusted_duration_mins?? 0} min
+        {opt.adjusted_duration_mins ?? 0} min
       </div>
       <div className="flex items-center gap-2">
         <span className="text-lg font-bold text-primary">
-          {opt.priority_score!= null? Math.round(opt.priority_score) : "—"}
+          {opt.priority_score != null ? Math.round(opt.priority_score) : "—"}
         </span>
         {opt.delay_risk && (
           <Badge variant="outline" className={delayRiskBadge(opt.delay_risk)}>
@@ -304,9 +288,9 @@ export default function AiPage() {
     </div>
   )
 
-const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blocked") => {
-    const isReprocessing =!!reprocessing[row.id]
-    const tableOptions: PlanOption[] = optionsByRequest[row.id]?? []
+  const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blocked") => {
+    const isReprocessing = !!reprocessing[row.id]
+    const tableOptions: PlanOption[] = optionsByRequest[row.id] ?? []
     const planText = row.ai_explanation
 
     return (
@@ -363,7 +347,7 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
             {variant === "scored" && (
               <div className="text-right shrink-0">
                 <div className="text-2xl font-bold text-primary">
-                  {row.priority_score!= null? Math.round(row.priority_score) : "—"}
+                  {row.priority_score != null ? Math.round(row.priority_score) : "—"}
                 </div>
                 {row.delay_risk && (
                   <Badge variant="outline" className={delayRiskBadge(row.delay_risk)}>
@@ -381,7 +365,7 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
               onClick={() => handleReprocess(row.id)}
               disabled={isReprocessing}
             >
-              {isReprocessing? (
+              {isReprocessing ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                   Reprocessing...
@@ -400,7 +384,7 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
                 onClick={() => toggleExpanded(row.id)}
                 className="px-2"
               >
-                {expanded[row.id]? (
+                {expanded[row.id] ? (
                   <>
                     <ChevronUp className="h-4 w-4 mr-1" /> Hide plan options
                   </>
@@ -416,9 +400,9 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
           {variant === "scored" && expanded[row.id] && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 min-h-[10rem]">
               {tableOptions.length > 0
-               ? tableOptions.map(renderOptionCard)
+                ? tableOptions.map(renderOptionCard)
                 : planText
-               ? (
+                ? (
                     <div className="col-span-full rounded-lg border p-4 text-sm">
                       <p className="font-medium mb-1">View AI Plan</p>
                       <p className="whitespace-pre-wrap text-muted-foreground">{planText}</p>
@@ -440,8 +424,8 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
   }
 
   const renderPendingCard = (row: BlockRequestRow) => {
-    const isProcessing =!!processing[row.id]
-    const tableOptions: PlanOption[] = optionsByRequest[row.id]?? []
+    const isProcessing = !!processing[row.id]
+    const tableOptions: PlanOption[] = optionsByRequest[row.id] ?? []
     const hasAI = tableOptions.length > 0 || row.ai_explanation
 
     return (
@@ -487,17 +471,17 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
 
           <div className="flex items-center gap-2">
             <Button
-              variant={hasAI? "outline" : "default"}
+              variant={hasAI ? "outline" : "default"}
               size="sm"
               onClick={() => processRequest(row.id)}
               disabled={isProcessing}
             >
-              {isProcessing? (
+              {isProcessing ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                   Analyzing...
                 </>
-              ) : hasAI? (
+              ) : hasAI ? (
                 <>
                   <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
                   Re-analyze
@@ -516,7 +500,7 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
                 onClick={() => toggleExpanded(row.id)}
                 className="px-2"
               >
-                {expanded[row.id]? (
+                {expanded[row.id] ? (
                   <>
                     <ChevronUp className="h-4 w-4 mr-1" /> Hide AI Options
                   </>
@@ -532,9 +516,9 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
           {expanded[row.id] && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 min-h-[10rem]">
               {tableOptions.length > 0
-               ? tableOptions.map(renderOptionCard)
+                ? tableOptions.map(renderOptionCard)
                 : row.ai_explanation
-               ? (
+                ? (
                     <div className="col-span-full rounded-lg border p-4 text-sm">
                       <p className="font-medium mb-1">AI Analysis</p>
                       <p className="whitespace-pre-wrap text-muted-foreground">{row.ai_explanation}</p>
@@ -587,6 +571,10 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
     )
   }
 
+  const renderSkeleton = () => (
+    <Skeleton className="h-40 w-full" />
+  )
+
   return (
     <div className="space-y-6">
       <DashboardPageHeader
@@ -601,7 +589,7 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
               onClick={() => sweepStuckRequests(true)}
               disabled={sweeping || loading}
             >
-              {sweeping? (
+              {sweeping ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                   Checking...
@@ -620,21 +608,14 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
           </div>
         }
       />
-    <Tabs defaultValue="per-request" className="space-y-6">
-      <TabsList>
-        <TabsTrigger value="per-request">Per-Request AI</TabsTrigger>
-        <TabsTrigger value="planning">Weekly/Monthly Planning</TabsTrigger>
-      </TabsList>
 
-      <TabsContent value="per-request" className="mt-0">
-      <div className="space-y-6">
-      {loading? (
+      {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-40 w-full" />
           ))}
         </div>
-      ) : requests.length === 0? (
+      ) : requests.length === 0 ? (
         <Card>
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">
@@ -678,13 +659,6 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
           )}
         </div>
       )}
-      </div>
-      </TabsContent>
-
-      <TabsContent value="planning" className="mt-0">
-        <HorizonPlanningCalendar />
-      </TabsContent>
-    </Tabs>
     </div>
   )
 }
