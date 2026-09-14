@@ -64,6 +64,7 @@ export async function generateHorizonPlan(
       horizon_start: startDate.toISOString(),
       horizon_end: endDate.toISOString(),
       status: 'draft',
+      generated_at: new Date().toISOString(),
     })
     .select('id')
     .single<{ id: string }>()
@@ -287,9 +288,16 @@ export async function generateHorizonPlan(
       : 100
   const projectedAvailabilityPct = Math.max(0, Math.min(100, Math.round(projected * 100) / 100))
 
+  const total = scheduled + deferred
+  const summaryExplanation =
+    `${horizonType === 'weekly' ? 'Weekly' : 'Monthly'} block plan generated for ${startDate.toISOString().slice(0, 10)}–${endDate.toISOString().slice(0, 10)}: ${scheduled} of ${total} requests scheduled, ${deferred} deferred, ${projectedAvailabilityPct}% projected segment availability.`
+
   const { error: updateErr } = await supabase
     .from('block_plan_horizons')
-    .update({ projected_availability_pct: projectedAvailabilityPct })
+    .update({
+      projected_availability_pct: projectedAvailabilityPct,
+      summary_explanation: summaryExplanation,
+    })
     .eq('id', horizonId)
   if (updateErr) {
     console.error('[optimizer] Failed to update projected availability:', updateErr?.message)
