@@ -7,8 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
-import { ChevronDown, ChevronUp, Loader2, CalendarDays } from "lucide-react"
-import * as Popover from "@radix-ui/react-popover"
+import { ChevronDown, ChevronUp, Loader2, CalendarDays, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type HorizonRow = {
@@ -33,15 +32,16 @@ type HorizonItemRow = {
   reason: string | null
 }
 
-type RequestInfo = { id: string; work_description: string | null }
+type RequestInfo = {
+  id: string
+  work_description: string | null
+  segment_name: string | null
+  department: string | null
+}
 
 type CalDay = { date: Date; key: string; inMonth: boolean }
 
 const DAY_NAMES_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-const MONTH_NAMES_SHORT = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-]
 
 function parseYmd(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
@@ -56,10 +56,6 @@ function dateKey(date: Date): string {
 
 function dayName(date: Date): string {
   return DAY_NAMES_SHORT[date.getUTCDay()]
-}
-
-function monthDay(date: Date): string {
-  return `${MONTH_NAMES_SHORT[date.getUTCMonth()]} ${date.getUTCDate()}`
 }
 
 function formatDateTime(value: string) {
@@ -77,14 +73,12 @@ function formatDate(value: string) {
   return new Date(parsed).toLocaleDateString("en-US", { dateStyle: "medium" })
 }
 
-function formatHour(hour: number): string {
+function formatHour(hour: number | null): string {
+  if (hour == null || Number.isNaN(hour)) return ""
   const h = Math.floor(hour)
-  return `${String(h).padStart(2, "0")}:00`
-}
-
-function truncate(text: string, max = 22): string {
-  if (text.length <= max) return text
-  return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}\u2026`
+  const mm = Math.round((hour - h) * 60)
+  const hh = String(h).padStart(2, "0")
+  return mm === 0 ? `${hh}:00` : `${hh}:${String(mm).padStart(2, "0")}`
 }
 
 function horizonTypeBadge(type: "weekly" | "monthly") {
@@ -104,6 +98,13 @@ function availabilityColor(pct: number) {
   if (pct > 80) return "text-green-500"
   if (pct >= 60) return "text-amber-500"
   return "text-red-500"
+}
+
+function chipStatusClass(status: "scheduled" | "deferred") {
+  if (status === "scheduled") {
+    return "bg-purple-100 text-purple-800 border border-purple-300"
+  }
+  return "bg-amber-50 text-amber-800 border border-dashed border-amber-400"
 }
 
 function buildWeekDays(start: Date): CalDay[] {
@@ -142,106 +143,6 @@ function buildMonthGrid(start: Date): CalDay[][] {
   return weeks
 }
 
-function HorizonItemChip({
-  item,
-  request,
-}: {
-  item: HorizonItemRow
-  request: RequestInfo | undefined
-}) {
-  const desc = request?.work_description ?? `Request ${item.block_request_id.slice(0, 8)}`
-  const time = item.assigned_start_hour != null ? formatHour(item.assigned_start_hour) : null
-  const chipText = time ? `${truncate(desc)} \u00b7 ${time}` : truncate(desc)
-
-  return (
-    <Popover.Root>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          title={desc}
-          className={cn(
-            "w-full truncate rounded-md px-2 py-1 text-[11px] font-medium leading-tight",
-            "cursor-pointer transition-colors",
-            statusColorClass(item.status),
-          )}
-        >
-          <span className="block w-full truncate">{chipText}</span>
-        </button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
-          sideOffset={8}
-          align="start"
-          className={cn(
-            "z-50 w-72 rounded-md border bg-popover p-3 text-sm text-popover-foreground shadow-md outline-none",
-          )}
-        >
-          <div className="space-y-2">
-            <p className="break-words text-xs">{desc}</p>
-            <div className="flex justify-between gap-2 text-xs">
-              <span className="text-muted-foreground">Priority score</span>
-              <span>
-                {item.priority_score != null ? Math.round(item.priority_score) : "\u2014"}
-              </span>
-            </div>
-            <div className="flex justify-between gap-2 text-xs">
-              <span className="text-muted-foreground">Reason</span>
-              <span className="text-right break-words">
-                {item.reason ? item.reason : "\u2014"}
-              </span>
-            </div>
-            <div className="flex justify-between gap-2 text-xs">
-              <span className="text-muted-foreground">Status</span>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "border-0 bg-transparent px-1 py-0 font-normal",
-                  statusColorClass(item.status),
-                )}
-              >
-                {item.status}
-              </Badge>
-            </div>
-          </div>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
-  )
-}
-
-function CalendarSkeleton({ monthly }: { monthly: boolean }) {
-  const bodyCells = monthly ? 42 : 7
-  return (
-    <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border bg-border">
-      {Array.from({ length: 7 }).map((_, i) => (
-        <Skeleton key={`h-${i}`} className="h-10 w-full" />
-      ))}
-      {Array.from({ length: bodyCells }).map((_, i) => (
-        <Skeleton key={`b-${i}`} className="h-16 w-full" />
-      ))}
-    </div>
-  )
-}
-
-function CalendarLegend() {
-  return (
-    <div className="mt-4 flex flex-wrap items-center gap-4 text-xs">
-      <div className="flex items-center gap-1.5">
-        <span
-          className={cn("h-3 w-3 rounded-sm", statusColorClass("scheduled"))}
-        />
-        <span className="text-muted-foreground">Scheduled</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span
-          className={cn("h-3 w-3 rounded-sm", statusColorClass("deferred"))}
-        />
-        <span className="text-muted-foreground">Deferred</span>
-      </div>
-    </div>
-  )
-}
-
 function AvailabilityGauge({ value }: { value: number | null }) {
   const pct = value != null ? Math.round(value) : 0
   const colorClass =
@@ -252,7 +153,11 @@ function AvailabilityGauge({ value }: { value: number | null }) {
   const dashOffset = circumference - (pct / 100) * circumference
 
   return (
-    <div className="relative h-32 w-32" role="img" aria-label="Availability gauge">
+    <div
+      className="relative h-32 w-32"
+      role="img"
+      aria-label="Availability gauge"
+    >
       <svg viewBox="0 0 100 100" className="h-full w-full">
         <circle
           cx="50"
@@ -287,6 +192,127 @@ function AvailabilityGauge({ value }: { value: number | null }) {
   )
 }
 
+function CalendarDayChip({
+  item,
+  request,
+  onSelect,
+}: {
+  item: HorizonItemRow
+  request: RequestInfo | undefined
+  onSelect: () => void
+}) {
+  const segmentName =
+    request?.segment_name ?? `Req ${item.block_request_id.slice(0, 8)}`
+  const startTime = formatHour(item.assigned_start_hour)
+  const chipText = startTime ? `${segmentName} ${startTime}` : segmentName
+
+  return (
+    <button
+      type="button"
+      title={request?.work_description ?? ""}
+      onClick={onSelect}
+      className={cn(
+        "block w-full truncate rounded-full px-2 py-0.5 text-[11px] font-medium mb-1",
+        chipStatusClass(item.status),
+      )}
+    >
+      <span className="block w-full truncate">{chipText}</span>
+    </button>
+  )
+}
+
+function ItemDetailPopover({
+  item,
+  request,
+  onClose,
+}: {
+  item: HorizonItemRow
+  request: RequestInfo | undefined
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div className="relative w-64 rounded-lg border bg-white p-3 shadow-xl dark:bg-gray-900 dark:border-gray-700">
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <div className="space-y-3 pr-6">
+          <div>
+            <span className="text-xs text-gray-500">Work Description</span>
+            <p className="text-sm break-words">
+              {request?.work_description ?? "\u2014"}
+            </p>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs text-gray-500">Priority Score</span>
+            <Badge variant="outline" className="text-xs">
+              {item.priority_score != null
+                ? Math.round(item.priority_score)
+                : "\u2014"}
+            </Badge>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs text-gray-500">Reason</span>
+            <span className="text-sm text-right break-words">
+              {item.reason ?? "\u2014"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs text-gray-500">Department</span>
+            <span className="text-sm">
+              {request?.department ?? "Unassigned"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs text-gray-500">Status</span>
+            <Badge
+              variant="outline"
+              className={cn(
+                "border-0 bg-transparent px-1 py-0 font-normal",
+                statusColorClass(item.status),
+              )}
+            >
+              {item.status}
+            </Badge>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CalendarSkeleton({ monthly }: { monthly: boolean }) {
+  const bodyCells = monthly ? 42 : 7
+  return (
+    <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border bg-border">
+      {Array.from({ length: 7 }).map((_, i) => (
+        <Skeleton key={`h-${i}`} className="h-10 w-full" />
+      ))}
+      {Array.from({ length: bodyCells }).map((_, i) => (
+        <Skeleton key={`b-${i}`} className="h-16 w-full" />
+      ))}
+    </div>
+  )
+}
+
+function CalendarLegend() {
+  return (
+    <div className="mt-4 flex gap-4 text-xs text-gray-600">
+      <div className="flex items-center gap-1.5">
+        <span className="h-3 w-3 rounded-full bg-purple-500" />
+        <span>Scheduled</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="h-3 w-3 rounded-full border border-dashed border-amber-400" />
+        <span>Deferred</span>
+      </div>
+    </div>
+  )
+}
+
 export default function HorizonPlanningCalendar() {
   const [horizonType, setHorizonType] = useState<"weekly" | "monthly">("weekly")
   const [horizonStartDate, setHorizonStartDate] = useState(() =>
@@ -298,6 +324,7 @@ export default function HorizonPlanningCalendar() {
   const [expandedHorizon, setExpandedHorizon] = useState<string | null>(null)
   const [horizonItems, setHorizonItems] = useState<Record<string, HorizonItemRow[]>>({})
   const [horizonRequests, setHorizonRequests] = useState<Record<string, RequestInfo>>({})
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
 
   const loadHorizons = async () => {
     setHorizonsLoading(true)
@@ -373,6 +400,12 @@ export default function HorizonPlanningCalendar() {
     }
   }
 
+  const selectedItem = selectedItemId
+    ? Object.values(horizonItems)
+        .flat()
+        .find((item) => item.id === selectedItemId)
+    : null
+
   const renderCalendar = (h: HorizonRow, items: HorizonItemRow[]) => {
     const start = parseYmd(h.horizon_start)
     if (!start) {
@@ -380,11 +413,6 @@ export default function HorizonPlanningCalendar() {
     }
 
     const weeks = h.horizon_type === "weekly" ? [buildWeekDays(start)] : buildMonthGrid(start)
-
-    const headerLabels =
-      h.horizon_type === "weekly"
-        ? weeks[0].map((d) => ({ label: dayName(d.date), sub: monthDay(d.date) }))
-        : DAY_NAMES_SHORT.map((d) => ({ label: d }))
 
     const flat = weeks.flatMap((w) => w)
     const itemsByDay = new Map<string, HorizonItemRow[]>()
@@ -399,49 +427,110 @@ export default function HorizonPlanningCalendar() {
       }
     }
 
+    if (h.horizon_type === "weekly") {
+      const days = weeks[0]
+      return (
+        <div className="overflow-x-auto">
+          <div className="grid grid-cols-7 gap-2">
+            {days.map((d) => (
+              <div
+                key={`h-${d.key}`}
+                className="flex flex-col items-center justify-center"
+              >
+                <span className="text-xs font-medium">{dayName(d.date)}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {d.date.getUTCDate()}
+                </span>
+              </div>
+            ))}
+            {days.map((d) => {
+              const dayItems = itemsByDay.get(d.key) ?? []
+              return (
+                <div
+                  key={`b-${d.key}`}
+                  className={cn(
+                    "min-h-[140px] border rounded-lg p-2 bg-white",
+                    dayItems.length === 0 && "bg-gray-50/50",
+                  )}
+                >
+                  {dayItems.length === 0 ? (
+                    <span className="text-[10px] text-muted-foreground/40">—</span>
+                  ) : (
+                    dayItems.map((item) => (
+                      <CalendarDayChip
+                        key={item.id}
+                        item={item}
+                        request={horizonRequests[item.block_request_id]}
+                        onSelect={() => setSelectedItemId(item.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <CalendarLegend />
+
+          {unassigned.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">
+                Deferred (unassigned date)
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {unassigned.map((item) => (
+                  <CalendarDayChip
+                    key={item.id}
+                    item={item}
+                    request={horizonRequests[item.block_request_id]}
+                    onSelect={() => setSelectedItemId(item.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
+
     return (
       <div className="overflow-x-auto">
-        <div className="grid min-w-[560px] grid-cols-7 gap-px overflow-hidden rounded-md border bg-border">
-          {headerLabels.map((hl, i) => (
+        <div className="grid grid-cols-7 gap-px bg-gray-200 border rounded-lg overflow-hidden">
+          {DAY_NAMES_SHORT.map((d, i) => (
             <div
               key={`h-${i}`}
-              className="flex flex-col items-center justify-center bg-muted/40 py-2 text-center"
+              className="bg-gray-50 py-1.5 text-center text-xs font-medium"
             >
-              <span className="text-xs font-medium">{hl.label}</span>
-              {hl.sub && (
-                <span className="text-[10px] text-muted-foreground">{hl.sub}</span>
-              )}
+              {d}
             </div>
           ))}
           {flat.map((d, i) => {
             const dayItems = itemsByDay.get(d.key) ?? []
-            const isEmpty = dayItems.length === 0
-            const hasDateLabel = h.horizon_type === "monthly" && d.inMonth
             return (
               <div
                 key={`b-${i}`}
                 className={cn(
-                  "min-h-[70px] p-1.5",
-                  "flex flex-col gap-1",
-                  d.inMonth ? "bg-background" : "bg-muted/20",
+                  "relative bg-white min-h-[100px] p-1",
+                  !d.inMonth && "bg-gray-100",
+                  d.inMonth && dayItems.length === 0 && "bg-gray-50/50",
                 )}
               >
-                {hasDateLabel && (
-                  <span className="text-[10px] text-muted-foreground/60">
+                {d.inMonth && (
+                  <span className="absolute top-1 left-1 text-sm text-muted-foreground/60">
                     {d.date.getUTCDate()}
                   </span>
                 )}
-                {d.inMonth && isEmpty ? (
-                  <span className="text-[10px] text-muted-foreground/40">—</span>
-                ) : (
-                  d.inMonth &&
-                  dayItems.map((item) => (
-                    <HorizonItemChip
-                      key={item.id}
-                      item={item}
-                      request={horizonRequests[item.block_request_id]}
-                    />
-                  ))
+                {d.inMonth && dayItems.length > 0 && (
+                  <div className="pt-5">
+                    {dayItems.map((item) => (
+                      <CalendarDayChip
+                        key={item.id}
+                        item={item}
+                        request={horizonRequests[item.block_request_id]}
+                        onSelect={() => setSelectedItemId(item.id)}
+                      />
+                    ))}
+                  </div>
                 )}
               </div>
             )
@@ -457,10 +546,11 @@ export default function HorizonPlanningCalendar() {
             </p>
             <div className="flex flex-col gap-1.5">
               {unassigned.map((item) => (
-                <HorizonItemChip
+                <CalendarDayChip
                   key={item.id}
                   item={item}
                   request={horizonRequests[item.block_request_id]}
+                  onSelect={() => setSelectedItemId(item.id)}
                 />
               ))}
             </div>
@@ -621,6 +711,14 @@ export default function HorizonPlanningCalendar() {
         <div className="space-y-4">
           {horizons.map(renderHorizonCard)}
         </div>
+      )}
+
+      {selectedItem && (
+        <ItemDetailPopover
+          item={selectedItem}
+          request={horizonRequests[selectedItem.block_request_id]}
+          onClose={() => setSelectedItemId(null)}
+        />
       )}
     </div>
   )

@@ -55,13 +55,29 @@ export async function GET(request: NextRequest) {
       ),
     ]
 
-    let requests: { id: string; work_description: string | null }[] = []
+    let requests: {
+      id: string
+      work_description: string | null
+      segment_name: string | null
+      department: string | null
+    }[] = []
     if (reqIds.length > 0) {
       const { data: reqData } = await supabase
         .from('block_requests')
-        .select('id, work_description')
+        .select('id, work_description, department, segments(name)')
         .in('id', reqIds)
-      requests = (reqData ?? []) as { id: string; work_description: string | null }[]
+      requests = (reqData ?? []).map((r: any) => {
+        const seg = r.segments
+        const segment_name = Array.isArray(seg)
+          ? seg[0]?.name ?? null
+          : seg?.name ?? null
+        return {
+          id: r.id,
+          work_description: r.work_description,
+          segment_name,
+          department: r.department,
+        }
+      })
     }
 
     return NextResponse.json({ items: itemsList, requests })
