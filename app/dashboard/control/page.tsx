@@ -35,7 +35,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui";
-import { DashboardPageHeader } from "@/components/dashboard-page-header";
 import {
   BarChart,
   Bar,
@@ -64,7 +63,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import LiveTrackMap from "@/components/LiveTrackMap";
-import HorizonPlanReview from "@/components/HorizonPlanReview";
 import type {
   ApprovalDecision,
   BlockPlanOption,
@@ -1079,33 +1077,33 @@ export default function ControlPage() {
 
   return (
     <div className="space-y-6">
-      <DashboardPageHeader
-        icon={TrainFront}
-        title="Control Center"
-        description="Live timetable & block request approvals for the rail network."
-        action={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={refreshTimetable}
-            disabled={refreshing}
-          >
-            {refreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Refresh Live Timetable
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Control Center</h1>
+          <p className="text-sm text-muted-foreground">
+            Live timetable &amp; block request approvals for the rail network.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refreshTimetable}
+          disabled={refreshing}
+        >
+          {refreshing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Refresh Live Timetable
+        </Button>
+      </div>
 
       <Tabs defaultValue="timetable" className="space-y-4">
         <TabsList>
           <TabsTrigger value="timetable">Timetable</TabsTrigger>
           <TabsTrigger value="pending">Pending Plans</TabsTrigger>
           <TabsTrigger value="verify">Verify Field Work</TabsTrigger>
-          <TabsTrigger value="horizons">Horizon Plans</TabsTrigger>
         </TabsList>
 
         <TabsContent value="timetable" className="space-y-3">
@@ -1659,10 +1657,6 @@ export default function ControlPage() {
                 );
               })
           )}
-        </TabsContent>
-
-        <TabsContent value="horizons" className="space-y-3">
-          <HorizonPlanReview />
         </TabsContent>
       </Tabs>
 

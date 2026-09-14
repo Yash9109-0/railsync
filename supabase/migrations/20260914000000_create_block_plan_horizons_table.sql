@@ -6,7 +6,7 @@ create table if not exists block_plan_horizons (
   horizon_end timestamp not null,
   status text not null default 'draft' check (status in ('draft', 'active', 'completed', 'cancelled')),
   projected_availability_pct float default 0,
-  created_at timestamp default now()
+  generated_at timestamp default now()
 );
 
 create table if not exists block_plan_horizon_items (
