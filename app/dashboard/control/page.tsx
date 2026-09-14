@@ -57,6 +57,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import LiveTrackMap from "@/components/LiveTrackMap";
+import HorizonPlanReview from "@/components/HorizonPlanReview";
 import CorridorAvailability from "@/components/CorridorAvailability";
 import type {
   ApprovalDecision,
@@ -995,6 +996,7 @@ useEffect(() => {
           <TabsTrigger value="timetable">Timetable</TabsTrigger>
           <TabsTrigger value="pending">Pending Plans</TabsTrigger>
           <TabsTrigger value="verify">Verify Field Work</TabsTrigger>
+          <TabsTrigger value="horizons">Horizon Plans</TabsTrigger>
           <TabsTrigger value="corridor">Corridor Availability</TabsTrigger>
         </TabsList>
 
@@ -1442,6 +1444,8 @@ useEffect(() => {
           )}
         </TabsContent>
 
+        <TabsContent value="horizons" className="space-y-3">
+          <HorizonPlanReview />
         <TabsContent value="corridor" className="space-y-3">
           <CorridorAvailability />
         </TabsContent>

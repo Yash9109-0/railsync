@@ -158,6 +158,8 @@ export interface BlockPlanHorizon {
   horizon_end: string
   status: HorizonStatus | null
   projected_availability_pct: number | null
+  generated_at: string
+  summary_explanation: string | null
   created_at: string
 }
 
