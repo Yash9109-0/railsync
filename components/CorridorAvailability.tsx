@@ -1,20 +1,19 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { cn } from "@/lib/utils"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+  Tooltip,
+  TooltipProvider,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip"
 import { toast } from "sonner"
-import { CalendarDays, Loader2, RefreshCw } from "lucide-react"
+import { BarChart, Loader2, RefreshCw } from "lucide-react"
 import GoodsForecastPanel from "./GoodsForecastPanel"
 
 const SEGMENT_NAMES = ["A-B", "B-C", "C-D", "D-E"]
@@ -68,6 +67,26 @@ function trafficFor(count: number): {
   }
 }
 
+const TRAFFIC_LEVELS: { count: number; range: string }[] = [
+  { count: 2, range: "<5" },
+  { count: 6, range: "5–8" },
+  { count: 12, range: ">8" },
+]
+
+function fmtPeakHour(hour: number | null): string | null {
+  if (hour == null) return null
+  return `${String(hour).padStart(2, "0")}:00`
+}
+
+function fmtPeakHours(start: number | null, end: number | null): string {
+  const s = fmtPeakHour(start)
+  const e = fmtPeakHour(end)
+  if (!s && !e) return "N/A"
+  if (!s) return `until ${e}`
+  if (!e) return `from ${s}`
+  return `${s} – ${e}`
+}
+
 const supabase = createClient()
 
 function dateRangeArray(start: string, end: string): string[] {
@@ -78,6 +97,69 @@ function dateRangeArray(start: string, end: string): string[] {
     dates.push(d.toISOString().split("T")[0])
   }
   return dates
+}
+
+interface HeatmapCellProps {
+  segName: string
+  date: string
+  count: number | null
+  traffic: ReturnType<typeof trafficFor> | null
+  row: GoodsForecastRow | null
+}
+
+function HeatmapCell({ segName, date, count, traffic, row }: HeatmapCellProps) {
+  const dateLabel = new Date(date).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  })
+
+  if (count === null || !traffic) {
+    return (
+      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs">
+        —
+      </div>
+    )
+  }
+
+  const peak = fmtPeakHours(
+    row?.peak_hour_start ?? null,
+    row?.peak_hour_end ?? null,
+  )
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className={cn(
+            "flex h-10 w-10 items-center justify-center rounded-md text-xs font-medium text-white shadow-xs transition-transform hover:scale-105",
+            traffic.bg,
+          )}
+        >
+          {count}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <div className="space-y-1">
+          <p className="font-medium">{segName}</p>
+          <p>
+            <span className="text-muted-foreground">Date:</span> {dateLabel}
+          </p>
+          <p>
+            <span className="text-muted-foreground">Expected goods trains:</span>{" "}
+            {count}
+          </p>
+          <p>
+            <span className="text-muted-foreground">Peak hours:</span> {peak}
+          </p>
+          <p>
+            <span className="text-muted-foreground">Traffic level:</span>{" "}
+            {traffic.label}
+          </p>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 export function CorridorAvailability() {
@@ -185,10 +267,10 @@ export function CorridorAvailability() {
   const cellFor = (segId: number, date: string) => {
     const row = forecastLookup.get(`${segId}-${date}`)
     if (!row) {
-      return { count: null as number | null, traffic: null }
+      return { count: null as number | null, traffic: null, row: null }
     }
     const traffic = trafficFor(row.expected_goods_trains)
-    return { count: row.expected_goods_trains, traffic }
+    return { count: row.expected_goods_trains, traffic, row }
   }
 
   return (
@@ -198,12 +280,13 @@ export function CorridorAvailability() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <CalendarDays className="h-5 w-5 text-muted-foreground" />
-            Corridor Availability
+            <BarChart className="h-5 w-5 text-primary" />
+            Corridor Traffic Forecast
           </CardTitle>
           <CardDescription>
-            Goods train volumes per segment per day. Green = good for
-            maintenance, red = high traffic — avoid scheduling blocks.
+            Goods train volumes per segment per day across the selected window. Color
+            intensity reflects traffic load; schedule maintenance during low-traffic
+            (green) windows.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -256,19 +339,17 @@ export function CorridorAvailability() {
             </Button>
           </div>
 
-          <div className="flex flex-wrap gap-4 text-xs">
-            <div className="flex items-center gap-1.5">
-              <div className="h-3 w-3 rounded-full bg-green-500" />
-              <span>Low (&lt;5) — Good for maintenance</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-3 w-3 rounded-full bg-amber-500" />
-              <span>Moderate (5–8)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-3 w-3 rounded-full bg-red-500" />
-              <span>High (&gt;8) — Avoid</span>
-            </div>
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            {TRAFFIC_LEVELS.map((l) => {
+              const t = trafficFor(l.count)
+              return (
+                <div key={t.level} className="flex items-center gap-1.5">
+                  <div className={cn("h-4 w-4 rounded", t.bg)} />
+                  <span className="font-medium">{t.label}</span>
+                  <span className="text-muted-foreground">({l.range})</span>
+                </div>
+              )
+            })}
           </div>
 
           {loading && dateRange.length === 0 ? (
@@ -281,66 +362,61 @@ export function CorridorAvailability() {
               <p>No segments found.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Segment</TableHead>
-                    <TableHead className="text-center">
-                      Passenger Trains
-                    </TableHead>
-                    {dateRange.map((date) => (
-                      <TableHead key={date} className="text-center">
-                        <div className="transform -rotate-90 origin-center">
-                          {new Date(date).toLocaleDateString("en-US", {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </div>
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+            <TooltipProvider delayDuration={350}>
+              <div className="overflow-x-auto">
+                <div
+                  className="grid gap-1"
+                  style={{
+                    gridTemplateColumns: `auto repeat(${dateRange.length}, minmax(0, 1fr))`,
+                  }}
+                >
+                  <div />
+                  {dateRange.map((date) => (
+                    <div key={date} className="flex h-10 flex-col items-center justify-center text-center">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {new Date(date).toLocaleDateString("en-US", {
+                          weekday: "short",
+                        })}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(date).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    </div>
+                  ))}
+
                   {segmentIds.map((segId) => {
                     const segName = segmentMap[segId] ?? `Segment ${segId}`
                     const passengerCount = passengerPerSegment[segId] ?? 0
                     return (
-                      <TableRow key={segId}>
-                        <TableCell className="font-medium">{segName}</TableCell>
-                        <TableCell className="text-center">
-                          {passengerCount}
-                        </TableCell>
+                      <React.Fragment key={segId}>
+                        <div className="flex h-10 items-center gap-2 text-sm font-medium">
+                          {segName}
+                          <span className="text-xs text-muted-foreground">
+                            ({passengerCount} passengers)
+                          </span>
+                        </div>
                         {dateRange.map((date) => {
-                          const { count, traffic } = cellFor(segId, date)
-                          if (count === null || !traffic) {
-                            return (
-                              <TableCell
-                                key={date}
-                                className="text-center text-muted-foreground"
-                              >
-                                —
-                              </TableCell>
-                            )
-                          }
+                          const cell = cellFor(segId, date)
                           return (
-                            <TableCell key={date} className="text-center">
-                              <div
-                                className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${traffic.bg} ${traffic.fg}`}
-                                title={`${segName} on ${date}: ${count} goods trains — ${traffic.desc}`}
-                              >
-                                {count}
-                              </div>
-                            </TableCell>
+                            <HeatmapCell
+                              key={date}
+                              segName={segName}
+                              date={date}
+                              count={cell.count}
+                              traffic={cell.traffic}
+                              row={cell.row}
+                            />
                           )
                         })}
-                      </TableRow>
+                      </React.Fragment>
                     )
                   })}
-                </TableBody>
-              </Table>
-            </div>
+                </div>
+              </div>
+            </TooltipProvider>
           )}
         </CardContent>
       </Card>
