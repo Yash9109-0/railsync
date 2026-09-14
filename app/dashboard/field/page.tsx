@@ -27,7 +27,12 @@ import {
   TableRow,
 } from "@/components/ui"
 import { Loader2, MapPin, PlayCircle, RefreshCw, Upload, Clock } from "lucide-react"
-import type { BlockRequest, BlockRequestStatus, ExecutionLog } from "@/lib/types"
+import type {
+  BlockRequest,
+  BlockRequestStatus,
+  DefectStatus,
+  ExecutionLog,
+} from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface SegmentName {
@@ -228,7 +233,26 @@ export default function FieldPage() {
         .eq("id", completeTarget.id)
       if (reqErr) throw reqErr
 
+      const { data: linkedDefects, error: defectLookupErr } = await supabase
+        .from("defects")
+        .select("id")
+        .eq("linked_block_request_id", completeTarget.id)
+      if (defectLookupErr) throw defectLookupErr
+
+      const hasLinkedDefect = linkedDefects && linkedDefects.length > 0
+
+      if (hasLinkedDefect) {
+        const { error: defectUpdateErr } = await supabase
+          .from("defects")
+          .update({ status: "resolved" as DefectStatus })
+          .eq("linked_block_request_id", completeTarget.id)
+        if (defectUpdateErr) throw defectUpdateErr
+      }
+
       toast.success("Work completed — logged for AI learning.")
+      if (hasLinkedDefect) {
+        toast.success("Linked defect marked resolved.")
+      }
 
       fetch("/api/update-stats", {
         method: "POST",
