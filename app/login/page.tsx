@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { getDashboardRouteForRole } from "@/lib/roles";
+import { Lock, Loader2, Mail, TrainFront } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -87,31 +88,19 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="space-y-4">
-          <div className="flex justify-center">
+        <CardHeader className="space-y-6">
+          <div className="flex flex-col items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                <path
-                  d="M6 19c4-4 8-8 14-14"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M6 23c4-4 8-8 14-14"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                />
-              </svg>
+              <TrainFront className="h-6 w-6" />
             </div>
+            <span className="text-xl font-bold text-foreground">RailSync</span>
           </div>
-          <CardTitle className="text-2xl text-center">
-            Welcome to RailSync
-          </CardTitle>
-          <CardDescription className="text-center">
-            Enter your email and password to sign in
-          </CardDescription>
+          <div className="space-y-1 text-center">
+            <CardTitle className="text-2xl">Welcome to RailSync</CardTitle>
+            <CardDescription>
+              Enter your email and password to sign in
+            </CardDescription>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -122,16 +111,20 @@ export default function LoginPage() {
               >
                 Email
               </label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                aria-invalid={!!errors.email}
-                aria-describedby={errors.email ? "email-error" : undefined}
-                autoComplete="email"
-              />
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  className="pl-10"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  aria-invalid={!!errors.email}
+                  aria-describedby={errors.email ? "email-error" : undefined}
+                  autoComplete="email"
+                />
+              </div>
               {errors.email && (
                 <p
                   className="text-xs text-destructive"
@@ -148,16 +141,20 @@ export default function LoginPage() {
               >
                 Password
               </label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                aria-invalid={!!errors.password}
-                aria-describedby={errors.password ? "password-error" : undefined}
-                autoComplete="current-password"
-              />
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;"
+                  className="pl-10"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  aria-invalid={!!errors.password}
+                  aria-describedby={errors.password ? "password-error" : undefined}
+                  autoComplete="current-password"
+                />
+              </div>
               {errors.password && (
                 <p
                   className="text-xs text-destructive"
@@ -167,17 +164,19 @@ export default function LoginPage() {
                 </p>
               )}
             </div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading}
-              variant="default"
-            >
-              {isLoading ? "Signing in..." : "Sign In"}
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                "Sign In"
+              )}
             </Button>
           </form>
         </CardContent>
       </Card>
-      </div>
+    </div>
   );
 }

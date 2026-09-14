@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DashboardPageHeader } from "@/components/dashboard-page-header"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
@@ -837,6 +838,38 @@ const renderRequestCard = (row: BlockRequestRow, variant: "scored" | "safety_blo
   )
 
   return (
+    <div className="space-y-6">
+      <DashboardPageHeader
+        icon={ShieldAlert}
+        title="AI Priority & Scoring"
+        description="Scored and safety-blocked requests. Stuck submissions are auto-processed on load."
+        action={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sweepStuckRequests(true)}
+              disabled={sweeping || loading}
+            >
+              {sweeping ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  Checking...
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+                  Check for Stuck Requests
+                </>
+              )}
+            </Button>
+            <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Refresh
+            </Button>
+          </div>
+        }
+      />
     <Tabs defaultValue="per-request" className="space-y-6">
       <TabsList>
         <TabsTrigger value="per-request">Per-Request AI</TabsTrigger>

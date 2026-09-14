@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
-  CardDescription,
-  CardContent,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -29,8 +31,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { ClipboardList, RefreshCw, Search } from "lucide-react"
+import {
+  Bug,
+  Calendar,
+  CheckCircle,
+  ClipboardList,
+  HelpCircle,
+  History,
+  Layers,
+  Plus,
+  RefreshCw,
+  Search,
+  Signal,
+  Wrench,
+  Zap,
+} from "lucide-react"
+import { DashboardPageHeader } from "@/components/dashboard-page-header"
 import type { BlockRequest, Segment, PlanOption, Defect } from "@/lib/types"
 
 interface SegmentOption extends Segment {
@@ -136,6 +154,14 @@ const DEFECT_TYPE_LABELS: Record<string, string> = {
   other: "Other",
 }
 
+const DEFECT_TYPE_ICONS: Record<string, React.ReactNode> = {
+  rail_crack: <Bug className="h-4 w-4" />,
+  signal_fault: <Signal className="h-4 w-4" />,
+  ohe_wear: <Zap className="h-4 w-4" />,
+  track_geometry: <Layers className="h-4 w-4" />,
+  other: <HelpCircle className="h-4 w-4" />,
+}
+
 const SEVERITY_LABELS: Record<string, string> = {
   low: "Low",
   medium: "Medium",
@@ -148,6 +174,13 @@ const SEVERITY_BADGE: Record<string, string> = {
   medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
   high: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
   critical: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+}
+
+const SEVERITY_BORDER: Record<string, string> = {
+  low: "border-l-4 border-l-gray-400 dark:border-l-gray-500",
+  medium: "border-l-4 border-l-amber-400 dark:border-l-amber-500",
+  high: "border-l-4 border-l-orange-400 dark:border-l-orange-500",
+  critical: "border-l-4 border-l-red-400 dark:border-l-red-500",
 }
 
 function severityToSafetyCriticality(severity: string): string {
@@ -239,6 +272,21 @@ function formatFromTimestamp(dateString: string): string {
     return toDateTimeLocal(new Date())
   }
   return toDateTimeLocal(date)
+}
+
+function isOverdue(defect: Defect): boolean {
+  if (!defect.due_date) return false
+  try {
+    const due = new Date(defect.due_date)
+    if (isNaN(due.getTime())) return false
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const compare = new Date(due)
+    compare.setHours(0, 0, 0, 0)
+    return compare < today && defect.status !== "resolved"
+  } catch {
+    return false
+  }
 }
 
 export default function MaintenancePage() {
@@ -645,717 +693,763 @@ export default function MaintenancePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Maintenance</h1>
-        <p className="text-muted-foreground">
-          Log defects and request track blocks for maintenance work. All requests
-          are routed to AI scoring and approval.
-        </p>
-      </div>
+      <DashboardPageHeader
+        icon={Wrench}
+        title="Maintenance"
+        description="Log defects and request track blocks for maintenance work. All requests are routed to AI scoring and approval."
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Log Defect &amp; Request Block</CardTitle>
-          <CardDescription>
-            Record a defect and optionally request a track block in a single
-            action. The defect is always saved; the block request is created
-            only if the checkbox below is checked.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            onSubmit={handleSubmit}
-            className="grid grid-cols-1 md:grid-cols-2 gap-4"
-          >
-            <div className="space-y-2">
-              <label
-                htmlFor="segment"
-                className="text-sm font-medium leading-none"
-              >
-                Segment
-              </label>
-              <Select
-                value={segmentId}
-                onValueChange={setSegmentId}
-                disabled={loading}
-              >
-                <SelectTrigger id="segment">
-                  <SelectValue
-                    placeholder={
-                      loading
-                        ? "Loading segments..."
-                        : "Select a segment"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {segments.map((seg) => (
-                    <SelectItem key={seg.id} value={String(seg.id)}>
-                      {seg.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.segment && (
-                <p
-                  className="text-xs text-destructive"
-                  id="segment-error"
-                >
-                  {errors.segment}
-                </p>
-              )}
-            </div>
+      <Tabs defaultValue="log" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="log">
+            <Plus className="h-4 w-4 mr-2" />
+            Log Defect / Request
+          </TabsTrigger>
+          <TabsTrigger value="register">
+            <ClipboardList className="h-4 w-4 mr-2" />
+            Defect Register
+          </TabsTrigger>
+          <TabsTrigger value="requests">
+            <History className="h-4 w-4 mr-2" />
+            My Requests
+          </TabsTrigger>
+        </TabsList>
 
-            <div className="space-y-2">
-              <label
-                htmlFor="department"
-                className="text-sm font-medium leading-none"
-              >
-                Department
-              </label>
-              <Select
-                value={department}
-                onValueChange={setDepartment}
-                disabled={loading}
-              >
-                <SelectTrigger id="department">
-                  <SelectValue placeholder="Select a department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEPARTMENT_OPTIONS.map((opt) => (
-                    <SelectItem key={opt} value={opt}>
-                      {opt}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.department && (
-                <p
-                  className="text-xs text-destructive"
-                  id="department-error"
-                >
-                  {errors.department}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="defect-type"
-                className="text-sm font-medium leading-none"
-              >
-                Defect Type
-              </label>
-              <Select
-                value={defectType}
-                onValueChange={setDefectType}
-                disabled={loading}
-              >
-                <SelectTrigger id="defect-type">
-                  <SelectValue placeholder="Select a defect type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEFECT_TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.defectType && (
-                <p
-                  className="text-xs text-destructive"
-                  id="defect-type-error"
-                >
-                  {errors.defectType}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="severity"
-                className="text-sm font-medium leading-none"
-              >
-                Severity
-              </label>
-              <Select
-                value={severity}
-                onValueChange={setSeverity}
-                disabled={loading}
-              >
-                <SelectTrigger id="severity">
-                  <SelectValue placeholder="Select a severity" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SEVERITY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.severity && (
-                <p
-                  className="text-xs text-destructive"
-                  id="severity-error"
-                >
-                  {errors.severity}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="due-date"
-                className="text-sm font-medium leading-none"
-              >
-                Due Date
-              </label>
-              <Input
-                id="due-date"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                disabled={loading}
-                required
-              />
-              {errors.dueDate && (
-                <p
-                  className="text-xs text-destructive"
-                  id="due-date-error"
-                >
-                  {errors.dueDate}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="requested-start"
-                className="text-sm font-medium leading-none"
-              >
-                Requested Start
-              </label>
-              <Input
-                id="requested-start"
-                type="datetime-local"
-                value={requestedStart}
-                onChange={(e) => setRequestedStart(e.target.value)}
-                disabled={loading}
-              />
-              {errors.requestedStart && (
-                <p
-                  className="text-xs text-destructive"
-                  id="requested-start-error"
-                >
-                  {errors.requestedStart}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="requested-duration-mins"
-                className="text-sm font-medium leading-none"
-              >
-                Duration (minutes)
-              </label>
-              <Input
-                id="requested-duration-mins"
-                type="number"
-                min="1"
-                placeholder="e.g. 60"
-                value={requestedDurationMins}
-                onChange={(e) => setRequestedDurationMins(e.target.value)}
-                disabled={loading}
-              />
-              {errors.requestedDurationMins && (
-                <p
-                  className="text-xs text-destructive"
-                  id="requested-duration-mins-error"
-                >
-                  {errors.requestedDurationMins}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <label
-                htmlFor="work-description"
-                className="text-sm font-medium leading-none"
-              >
-                Work Description
-              </label>
-              <Textarea
-                id="work-description"
-                placeholder="Describe the defect or maintenance work to be performed"
-                value={workDescription}
-                onChange={(e) => setWorkDescription(e.target.value)}
-                disabled={loading}
-                minLength={10}
-                required
-              />
-              {errors.workDescription && (
-                <p
-                  className="text-xs text-destructive"
-                  id="work-description-error"
-                >
-                  {errors.workDescription}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <label
-                htmlFor="justification"
-                className="text-sm font-medium leading-none"
-              >
-                Justification
-              </label>
-              <Textarea
-                id="justification"
-                placeholder="Why is this work needed now?"
-                value={justification}
-                onChange={(e) => setJustification(e.target.value)}
-                disabled={loading}
-                minLength={10}
-                required
-              />
-              {errors.justification && (
-                <p
-                  className="text-xs text-destructive"
-                  id="justification-error"
-                >
-                  {errors.justification}
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-end md:col-span-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  id="request-block"
-                  type="checkbox"
-                  checked={requestBlock}
-                  onChange={(e) => setRequestBlock(e.target.checked)}
-                  disabled={loading}
-                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary dark:border-gray-600 dark:bg-gray-800"
-                />
-                <span className="font-medium leading-none">
-                  Request a block for this now
-                </span>
-              </label>
-            </div>
-
-            <div className="md:col-span-2 flex justify-end">
-              <Button
-                type="submit"
-                disabled={!isFormValid() || isSubmitting}
-              >
-                {isSubmitting ? "Submitting..." : "Submit"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>All Defects</CardTitle>
-          <CardDescription>
-            {defects.length} defect{defects.length !== 1 ? "s" : ""} tracked.
-            Defects with a linked block request show the AI priority score once
-            scored.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : defects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <ClipboardList className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium">No defects logged</h3>
-              <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-                Log a defect using the form above and it will appear here.
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Segment</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Work Description</TableHead>
-                  <TableHead>Defect Type</TableHead>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Block Priority</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {defects.map((defect) => {
-                  const statusBadge = getDefectStatusBadge(defect.status)
-                  const linkedBR = defect.linked_block_request_id
-                    ? blockRequestScores[defect.linked_block_request_id]
-                    : undefined
-                  return (
-                    <TableRow key={defect.id}>
-                      <TableCell>
-                        {getSegmentName(defect.segment_id, segments)}
-                      </TableCell>
-                      <TableCell>{defect.department ?? "—"}</TableCell>
-                      <TableCell>
-                        <div
-                          className="max-w-xs truncate"
-                          title={
-                            defect.work_description ??
-                            defect.asset_description ??
-                            undefined
-                          }
-                        >
-                          {defect.work_description ??
-                            defect.asset_description ??
-                            "—"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {DEFECT_TYPE_LABELS[defect.defect_type] ??
-                          defect.defect_type}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={
-                            SEVERITY_BADGE[defect.severity] ??
-                            "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
-                          }
-                        >
-                          {SEVERITY_LABELS[defect.severity] ?? defect.severity}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{formatDate(defect.due_date)}</TableCell>
-                      <TableCell>
-                        <Badge className={statusBadge.className}>
-                          {statusBadge.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {linkedBR &&
-                        linkedBR.status === "scored" &&
-                        linkedBR.priority_score !== null ? (
-                          <span className="text-sm font-medium">
-                            {linkedBR.priority_score.toFixed(1)}
-                          </span>
-                        ) : linkedBR ? (
-                          <span className="text-xs text-muted-foreground">
-                            {linkedBR.status === "submitted"
-                              ? "AI Processing..."
-                              : linkedBR.status}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {defect.status === "open" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => createBlockRequestFromDefect(defect)}
-                            disabled={isSubmitting || loading}
-                          >
-                            Request Block Now
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {selectedRequestId && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>AI Plan Options</CardTitle>
+        <TabsContent value="log" className="space-y-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Log Defect &amp; Request Block</CardTitle>
               <CardDescription>
-                Generated for request:{" "}
-                <strong>
-                  {requests.find((r) => r.id === selectedRequestId)?.work_type}
-                </strong>{" "}
-                on{" "}
-                <strong>
-                  {getSegmentName(
-                    requests.find((r) => r.id === selectedRequestId)?.segment_id,
-                    segments,
-                  )}
-                </strong>
+                Record a defect and optionally request a track block in a single
+                action. The defect is always saved; the block request is created
+                only if the checkbox below is checked.
               </CardDescription>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelectedRequestId(null)}
-            >
-              Clear Selection
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {planOptions[selectedRequestId]?.length ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {planOptions[selectedRequestId].map((opt) => (
-                  <div
-                    key={opt.id}
-                    className={`rounded-lg border p-4 space-y-3 ${
-                      opt.is_recommended
-                        ? "border-2 border-[#960DF2] bg-[#960DF2]/5"
-                        : ""
-                    }`}
+            </CardHeader>
+            <CardContent>
+              <form
+                onSubmit={handleSubmit}
+                className="grid grid-cols-1 md:grid-cols-2 gap-4"
+              >
+                <div className="space-y-2">
+                  <label
+                    htmlFor="segment"
+                    className="text-sm font-medium leading-none"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold">
-                        {opt.option_label}
-                      </span>
-                      {opt.is_recommended && (
-                        <Badge className="bg-[#960DF2] hover:bg-[#960DF2] text-white text-xs">
-                          Recommended
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      <span>{formatDateTime(opt.adjusted_start)}</span> ·{" "}
-                      {opt.adjusted_duration_mins ?? 0} min
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-bold text-primary">
-                        {opt.priority_score != null
-                          ? Math.round(opt.priority_score)
-                          : "—"}
-                      </span>
-                      {opt.delay_risk && (
-                        <Badge variant="outline">
-                          {opt.delay_risk}
-                        </Badge>
-                      )}
-                    </div>
-                    {opt.explanation && (
-                      <p className="text-sm text-muted-foreground">
-                        {opt.explanation}
-                      </p>
-                    )}
-                    {opt.is_recommended && opt.what_if_note && (
-                      <p className="text-sm italic text-muted-foreground border-t pt-2 mt-2">
-                        {opt.what_if_note}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <p className="font-medium">No plan options yet</p>
-                <p className="text-sm mt-1">
-                  AI processing may still be running. Click "Reprocess" in the
-                  table if stuck.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>My Requests</CardTitle>
-          <CardDescription>
-            {user
-              ? `${requests.length} request${requests.length !== 1 ? "s" : ""} submitted`
-              : ""}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : requests.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <ClipboardList className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium">No requests yet</h3>
-              <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-                Submit your first block request using the form above. Once
-                submitted, it will appear here for tracking.
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="flex flex-col sm:flex-row gap-4 mb-4">
-                <div className="relative max-w-sm flex-1">
-                  <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by segment or work type..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8"
-                  />
+                    Segment
+                  </label>
+                  <Select
+                    value={segmentId}
+                    onValueChange={setSegmentId}
+                    disabled={loading}
+                  >
+                    <SelectTrigger id="segment">
+                      <SelectValue
+                        placeholder={
+                          loading
+                            ? "Loading segments..."
+                            : "Select a segment"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {segments.map((seg) => (
+                        <SelectItem key={seg.id} value={String(seg.id)}>
+                          {seg.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.segment && (
+                    <p
+                      className="text-xs text-destructive"
+                      id="segment-error"
+                    >
+                      {errors.segment}
+                    </p>
+                  )}
                 </div>
-                <Select
-                  value={statusFilter}
-                  onValueChange={setStatusFilter}
-                >
-                  <SelectTrigger className="max-w-xs">
-                    <SelectValue placeholder="Filter by status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="submitted">Submitted</SelectItem>
-                    <SelectItem value="scored">Scored</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="executed">Executed</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
 
-              {filteredRequests.length === 0 ? (
-                <div className="text-center py-8 text-sm text-muted-foreground">
-                  No matching results
+                <div className="space-y-2">
+                  <label
+                    htmlFor="department"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Department
+                  </label>
+                  <Select
+                    value={department}
+                    onValueChange={setDepartment}
+                    disabled={loading}
+                  >
+                    <SelectTrigger id="department">
+                      <SelectValue placeholder="Select a department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DEPARTMENT_OPTIONS.map((opt) => (
+                        <SelectItem key={opt} value={opt}>
+                          {opt}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.department && (
+                    <p
+                      className="text-xs text-destructive"
+                      id="department-error"
+                    >
+                      {errors.department}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="defect-type"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Defect Type
+                  </label>
+                  <Select
+                    value={defectType}
+                    onValueChange={setDefectType}
+                    disabled={loading}
+                  >
+                    <SelectTrigger id="defect-type">
+                      <SelectValue placeholder="Select a defect type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DEFECT_TYPE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.defectType && (
+                    <p
+                      className="text-xs text-destructive"
+                      id="defect-type-error"
+                    >
+                      {errors.defectType}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="severity"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Severity
+                  </label>
+                  <Select
+                    value={severity}
+                    onValueChange={setSeverity}
+                    disabled={loading}
+                  >
+                    <SelectTrigger id="severity">
+                      <SelectValue placeholder="Select a severity" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SEVERITY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.severity && (
+                    <p
+                      className="text-xs text-destructive"
+                      id="severity-error"
+                    >
+                      {errors.severity}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="due-date"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Due Date
+                  </label>
+                  <Input
+                    id="due-date"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    disabled={loading}
+                    required
+                  />
+                  {errors.dueDate && (
+                    <p
+                      className="text-xs text-destructive"
+                      id="due-date-error"
+                    >
+                      {errors.dueDate}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="requested-start"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Requested Start
+                  </label>
+                  <Input
+                    id="requested-start"
+                    type="datetime-local"
+                    value={requestedStart}
+                    onChange={(e) => setRequestedStart(e.target.value)}
+                    disabled={loading}
+                  />
+                  {errors.requestedStart && (
+                    <p
+                      className="text-xs text-destructive"
+                      id="requested-start-error"
+                    >
+                      {errors.requestedStart}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="requested-duration-mins"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Duration (minutes)
+                  </label>
+                  <Input
+                    id="requested-duration-mins"
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 60"
+                    value={requestedDurationMins}
+                    onChange={(e) => setRequestedDurationMins(e.target.value)}
+                    disabled={loading}
+                  />
+                  {errors.requestedDurationMins && (
+                    <p
+                      className="text-xs text-destructive"
+                      id="requested-duration-mins-error"
+                    >
+                      {errors.requestedDurationMins}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label
+                    htmlFor="work-description"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Work Description
+                  </label>
+                  <Textarea
+                    id="work-description"
+                    placeholder="Describe the defect or maintenance work to be performed"
+                    value={workDescription}
+                    onChange={(e) => setWorkDescription(e.target.value)}
+                    disabled={loading}
+                    minLength={10}
+                    required
+                  />
+                  {errors.workDescription && (
+                    <p
+                      className="text-xs text-destructive"
+                      id="work-description-error"
+                    >
+                      {errors.workDescription}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label
+                    htmlFor="justification"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Justification
+                  </label>
+                  <Textarea
+                    id="justification"
+                    placeholder="Why is this work needed now?"
+                    value={justification}
+                    onChange={(e) => setJustification(e.target.value)}
+                    disabled={loading}
+                    minLength={10}
+                    required
+                  />
+                  {errors.justification && (
+                    <p
+                      className="text-xs text-destructive"
+                      id="justification-error"
+                    >
+                      {errors.justification}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-end md:col-span-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      id="request-block"
+                      type="checkbox"
+                      checked={requestBlock}
+                      onChange={(e) => setRequestBlock(e.target.checked)}
+                      disabled={loading}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary dark:border-gray-600 dark:bg-gray-800"
+                    />
+                    <span className="font-medium leading-none">
+                      Request a block for this now
+                    </span>
+                  </label>
+                </div>
+
+                <div className="md:col-span-2 flex justify-end">
+                  <Button
+                    type="submit"
+                    disabled={!isFormValid() || isSubmitting}
+                  >
+                    {isSubmitting ? "Submitting..." : "Submit"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="register" className="space-y-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Defect Register</CardTitle>
+              <CardDescription>
+                {defects.length} defect{defects.length !== 1 ? "s" : ""} tracked.
+                Defects with a linked block request show the AI priority score
+                once scored.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-32 w-full" />
+                  ))}
+                </div>
+              ) : defects.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <CheckCircle className="h-12 w-12 text-green-500/50 mb-4" />
+                  <h3 className="text-lg font-medium">
+                    No defects logged yet — great work!
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-2 max-w-sm">
+                    Log a defect using the form above and it will appear here.
+                  </p>
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Segment</TableHead>
-                      <TableHead>Work Type</TableHead>
-                      <TableHead>Requested Start</TableHead>
-                      <TableHead>Duration</TableHead>
-                      <TableHead>Safety</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Priority Score</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredRequests.map((request, index) => {
-                      const badge = getStatusBadge(request.status)
-                      const isSelected = selectedRequestId === request.id
-                      const canSelect = request.status === "scored"
-                      return (
-                        <TableRow
-                          key={request.id}
-                          className={`animate-fade-in ${
-                            canSelect
-                              ? "cursor-pointer hover:bg-muted/50"
-                              : ""
-                          } ${isSelected ? "bg-primary/5" : ""}`}
-                          style={{
-                            animationDelay: `${Math.min(index * 40, 400)}ms`,
-                          }}
-                          onClick={
-                            canSelect
-                              ? () => setSelectedRequestId(request.id)
-                              : undefined
-                          }
-                        >
-                          <TableCell>
-                            {getSegmentName(request.segment_id, segments)}
-                          </TableCell>
-                          <TableCell>
-                            {workTypeLabels[request.work_type] ??
-                              request.work_type}
-                          </TableCell>
-                          <TableCell>
-                            {formatDateTime(request.requested_start)}
-                          </TableCell>
-                          <TableCell>
-                            {request.requested_duration_mins} min
-                          </TableCell>
-                          <TableCell>
-                            {safetyLabels[request.safety_criticality] ??
-                              request.safety_criticality}
-                          </TableCell>
-                          <TableCell>
-                            {request.status === "submitted" ? (
-                              <Badge className={`${badge.className} animate-pulse`}>
-                                AI Processing...
-                              </Badge>
-                            ) : request.status === "scored" ? (
-                              <div className="flex items-center gap-2">
-                                <Badge className={badge.className}>
-                                  {badge.label}
-                                </Badge>
-                                <span className="text-sm font-medium">
-                                  {request.priority_score !== null
-                                    ? request.priority_score.toFixed(1)
-                                    : "N/A"}
-                                </span>
-                                <a
-                                  href="/dashboard/ai"
-                                  className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
-                                >
-                                  View AI Plan
-                                </a>
-                              </div>
-                            ) : (
-                              <Badge className={badge.className}>
-                                {badge.label}
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {request.priority_score !== null
-                              ? request.priority_score.toFixed(1)
-                              : "Pending AI review"}
-                          </TableCell>
-                          <TableCell>
-                            {request.status === "submitted" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleReprocess(request.id)
-                                }}
-                                disabled={reprocessing[request.id]}
-                              >
-                                {reprocessing[request.id] ? (
-                                  <>
-                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                    Processing...
-                                  </>
-                                ) : (
-                                  "Reprocess"
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {defects.map((defect) => {
+                    const statusBadge = getDefectStatusBadge(defect.status)
+                    const linkedBR = defect.linked_block_request_id
+                      ? blockRequestScores[defect.linked_block_request_id]
+                      : undefined
+                    const overdue = isOverdue(defect)
+                    return (
+                      <Card
+                        key={defect.id}
+                        className={
+                          SEVERITY_BORDER[defect.severity] ??
+                          "border-l-4 border-l-gray-400"
+                        }
+                      >
+                        <CardHeader className="pb-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="space-y-1.5">
+                              <Badge variant="outline" className="gap-1.5">
+                                {DEFECT_TYPE_ICONS[defect.defect_type] ?? (
+                                  <HelpCircle className="h-4 w-4" />
                                 )}
-                              </Button>
-                            )}
-                            {request.status === "scored" && (
-                              <span className="text-xs text-muted-foreground">
-                                Click row for plan options
+                                <span>
+                                  {DEFECT_TYPE_LABELS[defect.defect_type] ??
+                                    defect.defect_type}
+                                </span>
+                              </Badge>
+                              <CardTitle className="text-base leading-snug">
+                                {defect.work_description ??
+                                  defect.asset_description ??
+                                  "—"}
+                              </CardTitle>
+                              <CardDescription>
+                                {getSegmentName(defect.segment_id, segments)}
+                              </CardDescription>
+                            </div>
+                            <div className="flex flex-col items-end gap-1.5">
+                              <Badge
+                                className={
+                                  SEVERITY_BADGE[defect.severity] ??
+                                  "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                                }
+                              >
+                                {SEVERITY_LABELS[defect.severity] ??
+                                  defect.severity}
+                              </Badge>
+                              <Badge className={statusBadge.className}>
+                                {statusBadge.label}
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pb-2 space-y-3 text-sm">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <span
+                                className={cn(
+                                  "font-medium",
+                                  overdue && "text-red-600",
+                                )}
+                              >
+                                Due {formatDate(defect.due_date)}
                               </span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
+                              {overdue && (
+                                <Badge
+                                  variant="destructive"
+                                  className="text-[10px] leading-none"
+                                >
+                                  Overdue
+                                </Badge>
+                              )}
+                            </div>
+                            <div>
+                              {linkedBR &&
+                              linkedBR.status === "scored" &&
+                              linkedBR.priority_score !== null ? (
+                                <span className="text-sm font-medium">
+                                  Score: {linkedBR.priority_score.toFixed(1)}
+                                </span>
+                              ) : linkedBR ? (
+                                <span className="text-xs text-muted-foreground">
+                                  {linkedBR.status === "submitted"
+                                    ? "AI Processing..."
+                                    : linkedBR.status}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  No block
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {defect.department && (
+                            <div className="text-muted-foreground">
+                              Department: {defect.department}
+                            </div>
+                          )}
+                        </CardContent>
+                        {defect.status === "open" && (
+                          <CardFooter>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                createBlockRequestFromDefect(defect)
+                              }
+                              disabled={isSubmitting || loading}
+                            >
+                              Request Block Now
+                            </Button>
+                          </CardFooter>
+                        )}
+                      </Card>
+                    )
+                  })}
+                </div>
               )}
-            </>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="requests" className="space-y-3">
+          {selectedRequestId && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>AI Plan Options</CardTitle>
+                  <CardDescription>
+                    Generated for request:{" "}
+                    <strong>
+                      {requests.find((r) => r.id === selectedRequestId)?.work_type}
+                    </strong>{" "}
+                    on{" "}
+                    <strong>
+                      {getSegmentName(
+                        requests.find((r) => r.id === selectedRequestId)?.segment_id,
+                        segments,
+                      )}
+                    </strong>
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedRequestId(null)}
+                >
+                  Clear Selection
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {planOptions[selectedRequestId]?.length ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {planOptions[selectedRequestId].map((opt) => (
+                      <div
+                        key={opt.id}
+                        className={`rounded-lg border p-4 space-y-3 ${
+                          opt.is_recommended
+                            ? "border-2 border-[#960DF2] bg-[#960DF2]/5"
+                            : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold">
+                            {opt.option_label}
+                          </span>
+                          {opt.is_recommended && (
+                            <Badge className="bg-[#960DF2] hover:bg-[#960DF2] text-white text-xs">
+                              Recommended
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          <span>{formatDateTime(opt.adjusted_start)}</span> ·{" "}
+                          {opt.adjusted_duration_mins ?? 0} min
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-bold text-primary">
+                            {opt.priority_score != null
+                              ? Math.round(opt.priority_score)
+                              : "—"}
+                          </span>
+                          {opt.delay_risk && (
+                            <Badge variant="outline">
+                              {opt.delay_risk}
+                            </Badge>
+                          )}
+                        </div>
+                        {opt.explanation && (
+                          <p className="text-sm text-muted-foreground">
+                            {opt.explanation}
+                          </p>
+                        )}
+                        {opt.is_recommended && opt.what_if_note && (
+                          <p className="text-sm italic text-muted-foreground border-t pt-2 mt-2">
+                            {opt.what_if_note}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p className="font-medium">No plan options yet</p>
+                    <p className="text-sm mt-1">
+                      AI processing may still be running. Click "Reprocess" in
+                      the table if stuck.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>My Requests</CardTitle>
+              <CardDescription>
+                {user
+                  ? `${requests.length} request${requests.length !== 1 ? "s" : ""} submitted`
+                  : ""}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : requests.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <ClipboardList className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                  <h3 className="text-lg font-medium">No requests yet</h3>
+                  <p className="text-sm text-muted-foreground mt-2 max-w-sm">
+                    Submit your first block request using the form above. Once
+                    submitted, it will appear here for tracking.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                    <div className="relative max-w-sm flex-1">
+                      <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search by segment or work type..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-8"
+                      />
+                    </div>
+                    <Select
+                      value={statusFilter}
+                      onValueChange={setStatusFilter}
+                    >
+                      <SelectTrigger className="max-w-xs">
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        <SelectItem value="submitted">Submitted</SelectItem>
+                        <SelectItem value="scored">Scored</SelectItem>
+                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="executed">Executed</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {filteredRequests.length === 0 ? (
+                    <div className="text-center py-8 text-sm text-muted-foreground">
+                      No matching results
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Segment</TableHead>
+                          <TableHead>Work Type</TableHead>
+                          <TableHead>Requested Start</TableHead>
+                          <TableHead>Duration</TableHead>
+                          <TableHead>Safety</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Priority Score</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredRequests.map((request, index) => {
+                          const badge = getStatusBadge(request.status)
+                          const isSelected = selectedRequestId === request.id
+                          const canSelect = request.status === "scored"
+                          return (
+                            <TableRow
+                              key={request.id}
+                              className={`animate-fade-in ${
+                                canSelect
+                                  ? "cursor-pointer hover:bg-muted/50"
+                                  : ""
+                              } ${isSelected ? "bg-primary/5" : ""}`}
+                              style={{
+                                animationDelay: `${Math.min(index * 40, 400)}ms`,
+                              }}
+                              onClick={
+                                canSelect
+                                  ? () => setSelectedRequestId(request.id)
+                                  : undefined
+                              }
+                            >
+                              <TableCell>
+                                {getSegmentName(request.segment_id, segments)}
+                              </TableCell>
+                              <TableCell>
+                                {workTypeLabels[request.work_type] ??
+                                  request.work_type}
+                              </TableCell>
+                              <TableCell>
+                                {formatDateTime(request.requested_start)}
+                              </TableCell>
+                              <TableCell>
+                                {request.requested_duration_mins} min
+                              </TableCell>
+                              <TableCell>
+                                {safetyLabels[request.safety_criticality] ??
+                                  request.safety_criticality}
+                              </TableCell>
+                              <TableCell>
+                                {request.status === "submitted" ? (
+                                  <Badge className={`${badge.className} animate-pulse`}>
+                                    AI Processing...
+                                  </Badge>
+                                ) : request.status === "scored" ? (
+                                  <div className="flex items-center gap-2">
+                                    <Badge className={badge.className}>
+                                      {badge.label}
+                                    </Badge>
+                                    <span className="text-sm font-medium">
+                                      {request.priority_score !== null
+                                        ? request.priority_score.toFixed(1)
+                                        : "N/A"}
+                                    </span>
+                                    <a
+                                      href="/dashboard/ai"
+                                      className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                    >
+                                      View AI Plan
+                                    </a>
+                                  </div>
+                                ) : (
+                                  <Badge className={badge.className}>
+                                    {badge.label}
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {request.priority_score !== null
+                                  ? request.priority_score.toFixed(1)
+                                  : "Pending AI review"}
+                              </TableCell>
+                              <TableCell>
+                                {request.status === "submitted" && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleReprocess(request.id)
+                                    }}
+                                    disabled={reprocessing[request.id]}
+                                  >
+                                    {reprocessing[request.id] ? (
+                                      <>
+                                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                        Processing...
+                                      </>
+                                    ) : (
+                                      "Reprocess"
+                                    )}
+                                  </Button>
+                                )}
+                                {request.status === "scored" && (
+                                  <span className="text-xs text-muted-foreground">
+                                    Click row for plan options
+                                  </span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
