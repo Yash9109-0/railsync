@@ -54,11 +54,23 @@ export async function POST(request: NextRequest) {
       requestedStartHour = new Date(parsed).getHours()
     }
 
-    const desc = ((blockRequest as any).description || "").toLowerCase()
-    let text_urgency_score = 30
-    if (desc.includes("urgent") || desc.includes("emergency")) text_urgency_score = 85
-    else if (desc.includes("critical") || desc.includes("crack") || desc.includes("failure")) text_urgency_score = 70
-    else if (desc.includes("inspection")) text_urgency_score = 40
+    const desc = (((blockRequest as any).description || "") + " " + ((blockRequest as any).justification || "")).toLowerCase()
+let text_urgency_score = 30
+
+if (desc.includes("derailment") || desc.includes("3rd failure") || desc.includes("repeat failure") || (desc.includes("point machine") && desc.includes("failure"))) {
+  text_urgency_score = 95
+}
+else if (desc.includes("rail fracture") || desc.includes("imr") || desc.includes("fracture")) {
+  text_urgency_score = 88
+}
+else if (desc.includes("sparking") || desc.includes("tripping") || desc.includes("ohe breakdown") || desc.includes("flashover")) {
+  text_urgency_score = 85
+}
+else if (desc.includes("urgent") || desc.includes("emergency")) text_urgency_score = 85
+else if (desc.includes("critical") || desc.includes("crack") || desc.includes("failure") || desc.includes("sr imposed") || desc.includes("speed restriction")) text_urgency_score = 70
+else if (desc.includes("inspection")) text_urgency_score = 40
+
+console.log("DESC:", desc, "SCORE:", text_urgency_score)
 
     const mlResponse = await fetch(mlApiUrl, {
       method: 'POST',
