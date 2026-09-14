@@ -1016,9 +1016,6 @@ useEffect(() => {
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Live Corridor View - Multi-Track</CardTitle>
-            </CardHeader>
             <CardContent>
               <LiveTrackMap timetable={timetable} />
             </CardContent>
