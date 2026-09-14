@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui"
+import { DashboardPageHeader } from "@/components/dashboard-page-header"
 import { Loader2, MapPin, PlayCircle, RefreshCw, Upload, Clock } from "lucide-react"
 import type {
   BlockRequest,
@@ -331,34 +332,30 @@ export default function FieldPage() {
 
   return (
     <div className="space-y-8 bg-white min-h-screen">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
-            Field Execution Dashboard
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Start approved work, complete it with site photos and a location,
-            and review execution performance.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setRefreshing(true)
-            fetchAll().finally(() => setRefreshing(false))
-          }}
-          disabled={refreshing}
-          className={cn(TOUCH_TARGET)}
-        >
-          {refreshing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Refresh
-        </Button>
-      </div>
+      <DashboardPageHeader
+        icon={MapPin}
+        title="Field Execution Dashboard"
+        description="Start approved work, complete it with site photos and a location, and review execution performance."
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setRefreshing(true)
+              fetchAll().finally(() => setRefreshing(false))
+            }}
+            disabled={refreshing}
+            className={cn(TOUCH_TARGET)}
+          >
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Section 1 — Approved */}
       <Card>
