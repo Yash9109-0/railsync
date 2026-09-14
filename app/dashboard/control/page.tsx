@@ -24,12 +24,6 @@ import {
   Progress,
   Separator,
   Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Tabs,
   TabsContent,
   TabsList,
@@ -56,6 +50,7 @@ import {
   Loader2,
   RefreshCw,
   Sparkles,
+  ArrowRight,
   TrainFront,
   TrendingDown,
   TrendingUp,
@@ -63,6 +58,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import LiveTrackMap from "@/components/LiveTrackMap";
+import CorridorAvailability from "@/components/CorridorAvailability";
+import HorizonPlanReview from "@/components/HorizonPlanReview";
 import type {
   ApprovalDecision,
   BlockPlanOption,
@@ -103,6 +100,7 @@ interface BlockRequestRow {
         is_recommended?: boolean | null;
       })[]
     | null;
+  block_plan_options: PlanOptionWithLabel[] | null;
 }
 interface ApprovalRow {
   id: string;
@@ -308,10 +306,7 @@ interface AnalyticsSummary {
 
 // block_plan_options carries an extra runtime `option_label` column (not declared
 // in lib/types); extend the shape so it is visible to the breakdown logic.
-interface PlanOptionWithLabel {
-  id: string;
-  block_request_id: string;
-  adjusted_duration_mins: number | null;
+interface PlanOptionWithLabel extends BlockPlanOption {
   option_label?: string | null;
   is_recommended?: boolean | null;
   [key: string]: unknown;
@@ -1100,15 +1095,22 @@ export default function ControlPage() {
       </div>
 
       <Tabs defaultValue="timetable" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex flex-wrap gap-1">
           <TabsTrigger value="timetable">Timetable</TabsTrigger>
           <TabsTrigger value="pending">Pending Plans</TabsTrigger>
           <TabsTrigger value="verify">Verify Field Work</TabsTrigger>
+          <TabsTrigger value="horizons">Horizon Plans</TabsTrigger>
+          <TabsTrigger value="corridor">Corridor</TabsTrigger>
         </TabsList>
 
         <TabsContent value="timetable" className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Live Timetable</h2>
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              Live Timetable
+              <Badge variant="outline" className="gap-1.5 border-green-200 text-green-700">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Live
+              </Badge>
+            </h2>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75"></span>
@@ -1123,9 +1125,6 @@ export default function ControlPage() {
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Live Corridor View - Multi-Track</CardTitle>
-            </CardHeader>
             <CardContent>
               <LiveTrackMap timetable={timetable} />
             </CardContent>
@@ -1195,6 +1194,25 @@ export default function ControlPage() {
                 )}
               </TableBody>
             </Table>
+            <div className="grid gap-3">
+              {timetable.map(train => (
+                <div key={train.id} className="flex items-center justify-between p-4 rounded-xl border bg-card hover:shadow-md transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+                      <TrainFront className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="font-bold font-mono">{train.train_number}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">{train.segments?.name ?? "—"} <ArrowRight className="w-3 h-3" /> <span suppressHydrationWarning>{fmtDateTime(train.scheduled_time)}</span></p>
+                    </div>
+                  </div>
+                  <Badge variant={statusVariant(train.status)} className="gap-1.5 capitalize">
+                    <span className={`w-2 h-2 rounded-full ${train.status === "delayed" || train.status === "cancelled" ? "bg-amber-500 animate-pulse" : "bg-emerald-500 animate-pulse"}`}></span>
+                    {statusLabel(train.status)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
           </div>
         </TabsContent>
 
@@ -1657,6 +1675,13 @@ export default function ControlPage() {
                 );
               })
           )}
+        </TabsContent>
+
+        <TabsContent value="horizons" className="space-y-3">
+          <HorizonPlanReview />
+        </TabsContent>
+        <TabsContent value="corridor" className="space-y-3">
+          <CorridorAvailability />
         </TabsContent>
       </Tabs>
 
