@@ -23,12 +23,6 @@ import {
   Input,
   Separator,
   Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Tabs,
   TabsContent,
   TabsList,
@@ -53,6 +47,7 @@ import {
   Sparkles,
   Edit,
   Loader2,
+  ArrowRight,
   TrainFront,
   AlertCircle,
   AlertTriangle,
@@ -1025,48 +1020,25 @@ useEffect(() => {
           </Card>
 
           <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Train #</TableHead>
-                  <TableHead>Segment</TableHead>
-                  <TableHead>Scheduled Time</TableHead>
-                  <TableHead className="text-right">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loadingTimetable ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-5 w-16" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : timetable.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
-                      <TrainFront className="mx-auto mb-2 h-6 w-6" />
-                      No timetable entries. Hit "Refresh Live Timetable" to seed the feed.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  timetable.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="font-mono">{row.train_number}</TableCell>
-                      <TableCell>{row.segments?.name ?? "—"}</TableCell>
-                      <TableCell><span suppressHydrationWarning>{fmtDateTime(row.scheduled_time)}</span></TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant={statusVariant(row.status)} className="capitalize">
-                          {statusLabel(row.status)}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+            <div className="grid gap-3">
+              {timetable.map(train => (
+                <div key={train.id} className="flex items-center justify-between p-4 rounded-xl border bg-card hover:shadow-md transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+                      <TrainFront className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="font-bold font-mono">{train.train_number}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">{train.segments?.name ?? "—"} <ArrowRight className="w-3 h-3" /> <span suppressHydrationWarning>{fmtDateTime(train.scheduled_time)}</span></p>
+                    </div>
+                  </div>
+                  <Badge variant={statusVariant(train.status)} className="gap-1.5 capitalize">
+                    <span className={`w-2 h-2 rounded-full ${train.status === "delayed" || train.status === "cancelled" ? "bg-amber-500" : "bg-emerald-500 animate-pulse"}`}></span>
+                    {statusLabel(train.status)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
           </div>
         </TabsContent>
 
