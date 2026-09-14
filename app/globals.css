@@ -177,6 +177,22 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* Option card: subtle purple glow when a plan is selected */
+  @keyframes selectGlow {
+    0% {
+      box-shadow: 0 0 0 0px hsla(268, 95%, 50%, 0.55);
+    }
+    55% {
+      box-shadow: 0 0 0 10px hsla(268, 95%, 50%, 0.25);
+    }
+    100% {
+      box-shadow: 0 0 0 0px hsla(268, 95%, 50%, 0);
+    }
+  }
+  .animate-selectGlow {
+    animation: selectGlow 0.75s ease-out;
+  }
 }
 
 /* ── Base Styles ── */
