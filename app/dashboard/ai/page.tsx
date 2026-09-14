@@ -12,7 +12,7 @@ import { useEffect, useState } from "react"
 import { ChevronDown, ChevronUp, Loader2, RefreshCw, ShieldAlert, AlertTriangle, Play, Check, X, Edit, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { BlockRequest } from "@/lib/types"
-import { HorizonPlanningCalendar } from "@/components/HorizonPlanningCalendar"
+import HorizonPlanningCalendar from "@/components/HorizonPlanningCalendar"
 
 type BlockRequestRow = BlockRequest
 

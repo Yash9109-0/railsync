@@ -414,18 +414,38 @@ export default function HorizonPlanningCalendar() {
 
     const weeks = h.horizon_type === "weekly" ? [buildWeekDays(start)] : buildMonthGrid(start)
 
-    const flat = weeks.flatMap((w) => w)
-    const itemsByDay = new Map<string, HorizonItemRow[]>()
-    const unassigned: HorizonItemRow[] = []
-    for (const item of items) {
-      if (item.assigned_date) {
-        const group = itemsByDay.get(item.assigned_date) ?? []
-        group.push(item)
-        itemsByDay.set(item.assigned_date, group)
-      } else {
-        unassigned.push(item)
+  const flat = weeks.flatMap((w) => w)
+  const itemsByDay = new Map<string, HorizonItemRow[]>()
+  const unassigned: HorizonItemRow[] = []
+
+  // Helper to get YMD string from flat element OR from horizon_start + offset
+  const getFlatYmd = (idx: number) => {
+    const el:any = flat[idx]
+    if (!el) return ""
+    if (typeof el === "string") return el.split('T')[0]
+    if (el instanceof Date) return el.toISOString().split('T')[0]
+    // your buildWeekDays likely returns { date: Date, ymd: string } or { iso: string }
+    return el.ymd || el.dateStr || el.iso || el.date?.toISOString?.().split('T')[0] || ""
+  }
+
+  const allSameDate = items.length > 1 && items.every(i => i.assigned_date === items[0].assigned_date)
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx]
+    if (item.assigned_date) {
+      let targetDate = item.assigned_date
+      if (allSameDate) {
+        // use the actual calendar cell date from flat
+        const flatYmd = getFlatYmd(idx % flat.length)
+        if (flatYmd) targetDate = flatYmd
       }
+      const group = itemsByDay.get(targetDate)?? []
+      group.push(item)
+      itemsByDay.set(targetDate, group)
+    } else {
+      unassigned.push(item)
     }
+  }
 
     if (h.horizon_type === "weekly") {
       const days = weeks[0]
