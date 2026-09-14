@@ -52,6 +52,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import LiveTrackMap from "@/components/LiveTrackMap";
+import CorridorAvailability from "@/components/CorridorAvailability";
+import HorizonPlanReview from "@/components/HorizonPlanReview";
 import type {
   ApprovalDecision,
   BlockPlanOption,
@@ -982,10 +984,12 @@ useEffect(() => {
       </div>
 
       <Tabs defaultValue="timetable" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex flex-wrap gap-1">
           <TabsTrigger value="timetable">Timetable</TabsTrigger>
           <TabsTrigger value="pending">Pending Plans</TabsTrigger>
           <TabsTrigger value="verify">Verify Field Work</TabsTrigger>
+          <TabsTrigger value="horizons">Horizon Plans</TabsTrigger>
+          <TabsTrigger value="corridor">Corridor</TabsTrigger>
         </TabsList>
 
         <TabsContent value="timetable" className="space-y-3">
@@ -1410,7 +1414,6 @@ useEffect(() => {
             })
           )}
         </TabsContent>
-<<<<<<< HEAD
 
         <TabsContent value="horizons" className="space-y-3">
           <HorizonPlanReview />
@@ -1418,8 +1421,6 @@ useEffect(() => {
         <TabsContent value="corridor" className="space-y-3">
           <CorridorAvailability />
         </TabsContent>
-=======
->>>>>>> origin/main
       </Tabs>
 
       {loadingApprovals && !approvals.length ? (
