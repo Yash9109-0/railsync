@@ -1107,14 +1107,14 @@ export default function ControlPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold flex items-center gap-2">
               Live Timetable
-              <Badge variant="outline" className="gap-1.5 border-green-200 text-green-700">
-                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Live
+              <Badge variant="outline" className="gap-1.5 border-green-200 text-green-700 dark:border-green-900 dark:text-green-300">
+                <span className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full animate-pulse"></span> Live
               </Badge>
             </h2>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 dark:bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500 dark:bg-green-400"></span>
               </span>
               <span>Live</span>
               <Separator orientation="vertical" className="h-3" />
@@ -1184,8 +1184,9 @@ export default function ControlPage() {
                       <TableCell className="text-right">
                         <Badge
                           variant={statusVariant(row.status)}
-                          className="capitalize"
+                          className="gap-1.5 capitalize"
                         >
+                          <span className={`w-2 h-2 rounded-full ${row.status === "delayed" || row.status === "cancelled" ? "bg-amber-500 dark:bg-amber-400 animate-pulse" : "bg-emerald-500 dark:bg-emerald-400 animate-pulse"}`}></span>
                           {statusLabel(row.status)}
                         </Badge>
                       </TableCell>
@@ -1207,7 +1208,7 @@ export default function ControlPage() {
                     </div>
                   </div>
                   <Badge variant={statusVariant(train.status)} className="gap-1.5 capitalize">
-                    <span className={`w-2 h-2 rounded-full ${train.status === "delayed" || train.status === "cancelled" ? "bg-amber-500 animate-pulse" : "bg-emerald-500 animate-pulse"}`}></span>
+                    <span className={`w-2 h-2 rounded-full ${train.status === "delayed" || train.status === "cancelled" ? "bg-amber-500 dark:bg-amber-400 animate-pulse" : "bg-emerald-500 dark:bg-emerald-400 animate-pulse"}`}></span>
                     {statusLabel(train.status)}
                   </Badge>
                 </div>

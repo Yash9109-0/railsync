@@ -43,7 +43,7 @@ function trafficFor(count: number): {
   if (count < 5) {
     return {
       level: "low",
-      bg: "bg-green-500",
+      bg: "bg-green-500 dark:bg-green-400",
       fg: "text-white",
       label: "Low",
       desc: "Low traffic — good for maintenance",
@@ -52,7 +52,7 @@ function trafficFor(count: number): {
   if (count <= 8) {
     return {
       level: "moderate",
-      bg: "bg-amber-500",
+      bg: "bg-amber-500 dark:bg-amber-400",
       fg: "text-white",
       label: "Moderate",
       desc: "Moderate traffic",
@@ -60,7 +60,7 @@ function trafficFor(count: number): {
   }
   return {
     level: "high",
-    bg: "bg-red-500",
+    bg: "bg-red-500 dark:bg-red-400",
     fg: "text-white",
     label: "High",
     desc: "High traffic — avoid",

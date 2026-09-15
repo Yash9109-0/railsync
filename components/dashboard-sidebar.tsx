@@ -20,10 +20,13 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  Moon,
+  Sun,
   TrainFront,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTheme } from "@/components/theme-provider";
 
 interface DashboardSidebarProps {
   role: string | null;
@@ -85,6 +88,8 @@ export function DashboardSidebar({
       router.replace("/login");
     }
   };
+
+  const { theme, toggleTheme } = useTheme();
 
   const displayName = fullName || userEmail || "User";
   const initials = displayName
@@ -205,6 +210,30 @@ export function DashboardSidebar({
             </Badge>
           </div>
         </div>
+
+        <TooltipProvider delayDuration={350}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="shrink-0 hover:bg-primary-hover"
+                onClick={toggleTheme}
+                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              >
+                {theme === "dark" ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         <TooltipProvider delayDuration={350}>
           <Tooltip>

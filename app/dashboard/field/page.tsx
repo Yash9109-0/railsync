@@ -298,20 +298,20 @@ export default function FieldPage() {
     }
     if (variance < 0) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
           Saved {Math.abs(variance)} min
         </span>
       )
     }
     if (variance > 0) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/30 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:text-red-300">
           Over by {variance} min
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
         On time
       </span>
     )
@@ -621,8 +621,8 @@ export default function FieldPage() {
 
       {/* Complete Work dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-lg bg-white">
-          <DialogHeader>
+      <DialogContent className="w-[95vw] max-w-lg bg-background">
+        <DialogHeader>
             <DialogTitle>Complete Work</DialogTitle>
             <DialogDescription>
               {completeTarget

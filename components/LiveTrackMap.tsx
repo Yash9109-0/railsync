@@ -147,8 +147,8 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
             Live Corridor View
             <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
               <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 dark:bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-400 dark:bg-green-400 animate-pulse"></span>
               </span>
               Live
             </span>
@@ -174,7 +174,7 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
             aria-label="Live corridor track map"
           >
             {TRACKS.map((track) => (
-              <g key={`lines-${track.id}`} strokeWidth={4} strokeLinecap="round" className="stroke-gray-300">
+              <g key={`lines-${track.id}`} strokeWidth={4} strokeLinecap="round" className="stroke-gray-300 dark:stroke-gray-600">
                 {Array.from({ length: NUM_SEGMENTS }).map((_, i) => (
                   <line key={`line-${track.id}-${i}`} x1={stationX(i)} y1={track.y} x2={stationX(i + 1)} y2={track.y} />
                 ))}
@@ -182,7 +182,7 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
             ))}
 
             {TRACKS.map((track) => (
-              <text key={`tlabel-${track.id}`} x={10} y={track.y + 4} fontSize={11} className="fill-gray-500">
+              <text key={`tlabel-${track.id}`} x={10} y={track.y + 4} fontSize={11} className="fill-gray-500 dark:fill-gray-400">
                 T{track.id === "up"? 1 : track.id === "down"? 2 : 3}
               </text>
             ))}
@@ -193,12 +193,12 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
                 const isOccupied = occupied[track.id].has(i);
                 return (
                   <g key={`signal-${track.id}-${i}`}>
-                    {!isOccupied && <circle cx={midX} cy={track.signalY} r={10} className="fill-green-500/20" />}
+                    {!isOccupied && <circle cx={midX} cy={track.signalY} r={10} className="fill-green-400/20 dark:fill-green-400/30" />}
                     <circle
                       cx={midX}
                       cy={track.signalY}
                       r={5.5}
-                      className={isOccupied? "fill-red-500 animate-pulse drop-shadow-[0_0_6px_rgba(239,68,68,0.9)]" : "fill-green-500 drop-shadow-[0_0_6px_rgba(34,197,94,0.8)]"}
+                      className={isOccupied? "fill-red-500 animate-pulse drop-shadow-[0_0_6px_rgba(239,68,68,0.9)]" : "fill-green-400 dark:fill-green-400 drop-shadow-[0_0_6px_rgba(34,197,94,0.8)]"}
                     />
                   </g>
                 );
@@ -209,13 +209,13 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
               STATIONS.map((_, i) => (
                 <g key={`station-${track.id}-${i}`}>
                   <circle cx={stationX(i)} cy={track.y} r={20} className="fill-[#960DF2]/15" />
-                  <circle cx={stationX(i)} cy={track.y} r={STATION_R} className="fill-white stroke-[#960DF2] stroke-2 drop-shadow-[0_0_8px_rgba(150,13,255,0.25)]" />
+                  <circle cx={stationX(i)} cy={track.y} r={STATION_R} className="fill-white stroke-[#960DF2] stroke-2 drop-shadow-[0_0_8px_rgba(150,13,255,0.25)] dark:fill-gray-900" />
                 </g>
               ))
             )}
 
             {STATIONS.map((label, i) => (
-              <text key={`stationlabel-${label}`} x={stationX(i)} y={LABEL_Y} textAnchor="middle" fontSize={12} fontWeight={700} className="fill-gray-700">
+              <text key={`stationlabel-${label}`} x={stationX(i)} y={LABEL_Y} textAnchor="middle" fontSize={12} fontWeight={700} className="fill-gray-700 dark:fill-gray-300">
                 {label}
               </text>
             ))}
@@ -228,8 +228,8 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
             return (
               <div key={t.train_number} className="pointer-events-none absolute z-20" style={{ left: `${(x / VIEW_W) * 100}%`, top: `${(y / VIEW_H) * 100}%`, transform: "translate(-50%, -140%)" }}>
                 <div className="flex flex-col items-center">
-                  <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded-md shadow-sm border text-[10px] font-semibold text-blue-700">
-                    <Train className="h-3.5 w-3.5 text-blue-600" />
+                  <div className="flex items-center gap-1 bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded-md shadow-sm border text-[10px] font-semibold text-blue-700 dark:text-blue-300">
+                    <Train className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                     {t.train_number}
                   </div>
                   <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-t-[4px] border-l-transparent border-r-transparent border-t-white drop-shadow-sm"></div>
@@ -244,9 +244,9 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
         </div>
 
         <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground pt-1">
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" />Signal Clear</span>
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-green-400 dark:bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.8)]" />Signal Clear</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_6px_rgba(239,68,68,0.8)]" />Signal Occupied</span>
-          <span className="flex items-center gap-1.5"><Train className="h-4 w-4 text-blue-600" />Train</span>
+          <span className="flex items-center gap-1.5"><Train className="h-4 w-4 text-blue-600 dark:text-blue-400" />Train</span>
         </div>
       </CardContent>
     </Card>

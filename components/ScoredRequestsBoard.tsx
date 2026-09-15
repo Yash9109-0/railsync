@@ -78,11 +78,11 @@ function departmentPill(dept: string | null | undefined) {
   const d = (dept ?? "").toUpperCase()
   switch (d) {
     case "TMS":
-      return "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/20"
+      return "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20"
     case "TDMS":
-      return "bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/20"
+      return "bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/20"
     case "SMMS":
-      return "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20"
+      return "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
     default:
       return "bg-muted/50 text-muted-foreground border border-border"
   }
@@ -144,7 +144,7 @@ function PriorityRing({ score }: { score: number | null }) {
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (value / 100) * circumference
   const ringColor =
-    value < 40 ? "stroke-green-500" : value < 70 ? "stroke-amber-500" : "stroke-red-500"
+    value < 40 ? "stroke-green-500 dark:stroke-green-400" : value < 70 ? "stroke-amber-500 dark:stroke-amber-400" : "stroke-red-500 dark:stroke-red-400"
 
   return (
     <div className="relative h-11 w-11">

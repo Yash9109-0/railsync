@@ -83,28 +83,28 @@ function formatHour(hour: number | null): string {
 
 function horizonTypeBadge(type: "weekly" | "monthly") {
   return type === "weekly"
-    ? "text-blue-700 dark:text-blue-400 bg-blue-500/10 border-blue-600/20"
-    : "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-600/20"
+    ? "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-600/20"
+    : "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-600/20"
 }
 
 function statusColorClass(status: "scheduled" | "deferred" | null | undefined) {
   if (status === "scheduled") {
-    return "bg-purple-500/20 text-purple-700 border border-purple-500/40 dark:bg-purple-900/35 dark:text-purple-300 dark:border-purple-900/60"
+    return "bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 dark:bg-purple-900/35 dark:border-purple-900/60"
   }
-  return "bg-amber-500/5 text-amber-700 border border-amber-500/50 dark:bg-amber-900/25 dark:text-amber-300 dark:border-amber-400"
+  return "bg-amber-500/5 text-amber-700 dark:text-amber-300 border border-amber-500/50 dark:bg-amber-900/25 dark:border-amber-400"
 }
 
 function availabilityColor(pct: number) {
-  if (pct > 80) return "text-green-500"
-  if (pct >= 60) return "text-amber-500"
-  return "text-red-500"
+  if (pct > 80) return "text-green-500 dark:text-green-400"
+  if (pct >= 60) return "text-amber-500 dark:text-amber-400"
+  return "text-red-500 dark:text-red-400"
 }
 
 function chipStatusClass(status: "scheduled" | "deferred") {
   if (status === "scheduled") {
-    return "bg-purple-100 text-purple-800 border border-purple-300"
+    return "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-800"
   }
-  return "bg-amber-50 text-amber-800 border border-dashed border-amber-400"
+  return "bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-dashed border-amber-400 dark:border-amber-600"
 }
 
 function buildWeekDays(start: Date): CalDay[] {
@@ -232,22 +232,22 @@ function ItemDetailPopover({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
-      <div className="relative w-64 rounded-lg border bg-white p-3 shadow-xl dark:bg-gray-900 dark:border-gray-700">
+      <div className="relative w-64 rounded-lg border bg-popover dark:bg-gray-800 dark:border-gray-700 p-3 shadow-xl">
         <button
           onClick={onClose}
-          className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+          className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
         >
           <X className="h-4 w-4" />
         </button>
         <div className="space-y-3 pr-6">
           <div>
-            <span className="text-xs text-gray-500">Work Description</span>
+            <span className="text-xs text-muted-foreground">Work Description</span>
             <p className="text-sm break-words">
               {request?.work_description ?? "\u2014"}
             </p>
           </div>
           <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Priority Score</span>
+            <span className="text-xs text-muted-foreground">Priority Score</span>
             <Badge variant="outline" className="text-xs">
               {item.priority_score != null
                 ? Math.round(item.priority_score)
@@ -255,19 +255,19 @@ function ItemDetailPopover({
             </Badge>
           </div>
           <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Reason</span>
+            <span className="text-xs text-muted-foreground">Reason</span>
             <span className="text-sm text-right break-words">
               {item.reason ?? "\u2014"}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Department</span>
+            <span className="text-xs text-muted-foreground">Department</span>
             <span className="text-sm">
               {request?.department ?? "Unassigned"}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-xs text-gray-500">Status</span>
+            <span className="text-xs text-muted-foreground">Status</span>
             <Badge
               variant="outline"
               className={cn(
@@ -300,13 +300,13 @@ function CalendarSkeleton({ monthly }: { monthly: boolean }) {
 
 function CalendarLegend() {
   return (
-    <div className="mt-4 flex gap-4 text-xs text-gray-600">
+    <div className="mt-4 flex gap-4 text-xs text-muted-foreground">
       <div className="flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded-full bg-purple-500" />
+        <span className="h-3 w-3 rounded-full bg-purple-500 dark:bg-purple-400" />
         <span>Scheduled</span>
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded-full border border-dashed border-amber-400" />
+        <span className="h-3 w-3 rounded-full border border-dashed border-amber-400 dark:border-amber-600" />
         <span>Deferred</span>
       </div>
     </div>
@@ -469,8 +469,8 @@ export default function HorizonPlanningCalendar() {
                 <div
                   key={`b-${d.key}`}
                   className={cn(
-                    "min-h-[140px] border rounded-lg p-2 bg-white",
-                    dayItems.length === 0 && "bg-gray-50/50",
+                    "min-h-[140px] border rounded-lg p-2 bg-card",
+                    dayItems.length === 0 && "bg-muted/30",
                   )}
                 >
                   {dayItems.length === 0 ? (
@@ -514,13 +514,13 @@ export default function HorizonPlanningCalendar() {
     }
 
     return (
-      <div className="overflow-x-auto">
-        <div className="grid grid-cols-7 gap-px bg-gray-200 border rounded-lg overflow-hidden">
-          {DAY_NAMES_SHORT.map((d, i) => (
-            <div
-              key={`h-${i}`}
-              className="bg-gray-50 py-1.5 text-center text-xs font-medium"
-            >
+          <div className="overflow-x-auto">
+          <div className="grid grid-cols-7 gap-px bg-muted border rounded-lg overflow-hidden">
+            {DAY_NAMES_SHORT.map((d, i) => (
+              <div
+                key={`h-${i}`}
+                className="bg-muted/50 py-1.5 text-center text-xs font-medium"
+              >
               {d}
             </div>
           ))}
@@ -530,9 +530,9 @@ export default function HorizonPlanningCalendar() {
               <div
                 key={`b-${i}`}
                 className={cn(
-                  "relative bg-white min-h-[100px] p-1",
-                  !d.inMonth && "bg-gray-100",
-                  d.inMonth && dayItems.length === 0 && "bg-gray-50/50",
+                  "relative bg-card min-h-[100px] p-1",
+                  !d.inMonth && "bg-muted/30",
+                  d.inMonth && dayItems.length === 0 && "bg-muted/10",
                 )}
               >
                 {d.inMonth && (

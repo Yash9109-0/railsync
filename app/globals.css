@@ -111,12 +111,20 @@
   --ring: 268 95% 55%;
 
   --primary: 268 95% 55%;
-  --primary-hover: 270 92% 95%;
+  --primary-hover: 270 92% 25%;
   --primary-active: 275 90% 45%;
 
   --success: 147 69% 55%;
+  --success-foreground: 0 0% 100%;
+  --success-bg: 147 70% 20%;
+
   --warning: 40 90% 55%;
+  --warning-foreground: 0 0% 100%;
+  --warning-bg: 40 96% 25%;
+
   --destructive: 10 90% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --destructive-bg: 10 93% 25%;
 
   --gray-50: 224 71% 8%;
   --gray-100: 224 71% 10%;
@@ -144,6 +152,8 @@
   --sidebar-accent-foreground: 0 0% 98%;
   --sidebar-border: 224 71% 18%;
   --sidebar-ring: 268 95% 60%;
+
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.3);
 }
 
 /* ── Utility Classes ── */
