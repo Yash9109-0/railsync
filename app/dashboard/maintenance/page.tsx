@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
+import { useCorridor } from "@/context/CorridorContext"
 import {
   Bug,
   Calendar,
@@ -290,6 +291,7 @@ function isOverdue(defect: Defect): boolean {
 }
 
 export default function MaintenancePage() {
+  const { selectedCorridorId } = useCorridor()
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [segments, setSegments] = useState<SegmentOption[]>([])
   const [requests, setRequests] = useState<BlockRequest[]>([])
@@ -324,16 +326,26 @@ export default function MaintenancePage() {
     const fetchData = async () => {
       const supabase = createClient()
 
+      setLoading(true)
+
       const { data: { user: currentUser } } =
         await supabase.auth.getUser()
 
+      let segmentsQuery = supabase
+        .from("segments")
+        .select("id, name, from_station_id, to_station_id, corridor_id")
+        .order("name")
+
+      if (selectedCorridorId != null) {
+        segmentsQuery = segmentsQuery.eq("corridor_id", selectedCorridorId)
+      }
+
       const [segmentsRes, stationsRes] = await Promise.all([
-        supabase
-          .from("segments")
-          .select("id, name, from_station_id, to_station_id")
-          .order("name"),
+        segmentsQuery,
         supabase.from("stations").select("id, name"),
       ])
+
+      let corridorSegmentIds: number[] = []
 
       if (segmentsRes.data && stationsRes.data) {
         const stationMap = new Map(stationsRes.data.map((s) => [s.id, s.name]))
@@ -344,17 +356,24 @@ export default function MaintenancePage() {
           }),
         )
         setSegments(segmentsWithOptions)
+        corridorSegmentIds = segmentsWithOptions.map((s) => s.id)
       }
 
       if (currentUser) {
         setUser({ id: currentUser.id, email: currentUser.email })
 
+        let requestsQuery = supabase
+          .from("block_requests")
+          .select("*")
+          .eq("requested_by", currentUser.id)
+          .order("created_at", { ascending: false })
+
+        if (selectedCorridorId != null) {
+          requestsQuery = requestsQuery.in("segment_id", corridorSegmentIds)
+        }
+
         const { data: requestsData, error: requestsError } =
-          await supabase
-            .from("block_requests")
-            .select("*")
-            .eq("requested_by", currentUser.id)
-            .order("created_at", { ascending: false })
+          await requestsQuery
 
         if (requestsError) {
           toast.error("Failed to load requests")
@@ -380,19 +399,26 @@ export default function MaintenancePage() {
         }
       }
 
+      await fetchDefects(corridorSegmentIds)
+      setSelectedRequestId(null)
       setLoading(false)
     }
 
     fetchData()
-    fetchDefects()
-  }, [])
+  }, [selectedCorridorId])
 
-  const fetchDefects = async () => {
+  const fetchDefects = async (segmentIds: number[] = segments.map((s) => s.id)) => {
     const supabase = createClient()
-    const { data, error } = await supabase
+    let query = supabase
       .from("defects")
       .select("*")
       .order("due_date", { ascending: true })
+
+    if (selectedCorridorId != null) {
+      query = query.in("segment_id", segmentIds)
+    }
+
+    const { data, error } = await query
     if (error) {
       toast.error("Failed to load defects")
       return
@@ -419,14 +445,20 @@ export default function MaintenancePage() {
     }
   }
 
-  const fetchRequests = async () => {
+  const fetchRequests = async (segmentIds: number[] = segments.map((s) => s.id)) => {
     if (!user) return
     const supabase = createClient()
-    const { data, error } = await supabase
+    let query = supabase
       .from("block_requests")
       .select("*")
       .eq("requested_by", user.id)
       .order("created_at", { ascending: false })
+
+    if (selectedCorridorId != null) {
+      query = query.in("segment_id", segmentIds)
+    }
+
+    const { data, error } = await query
     if (error) {
       toast.error("Failed to load requests")
       return

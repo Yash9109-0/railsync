@@ -2,6 +2,7 @@ export interface Profile {
   id: string
   full_name: string | null
   role: string | null
+  assigned_corridor_id: number | null
   created_at: string
 }
 
@@ -16,6 +17,15 @@ export interface Segment {
   name: string
   from_station_id: number
   to_station_id: number
+  corridor_id: number | null
+}
+
+export interface Corridor {
+  id: number
+  name: string
+  description: string | null
+  is_active: boolean | null
+  created_at: string
 }
 
 export type TimetableStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'delayed'
@@ -204,6 +214,7 @@ export type Tables =
   | { table: 'block_plan_horizons'; row: BlockPlanHorizon }
   | { table: 'block_plan_horizon_items'; row: BlockPlanHorizonItem }
   | { table: 'goods_train_forecast'; row: GoodsTrainForecast }
+  | { table: 'corridors'; row: Corridor }
 
 export type TableName = Tables['table']
 
