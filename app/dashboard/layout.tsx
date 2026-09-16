@@ -1,16 +1,17 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
-import { DashboardTopBar } from "@/components/dashboard-top-bar";
 import { CorridorProvider } from "@/context/CorridorContext";
-export const dynamic = "force-dynamic";
+import { DashboardTopBar } from "@/components/dashboard-top-bar";
+
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -32,8 +33,6 @@ export default async function DashboardLayout({
         fullName={profile?.full_name ?? null}
         userEmail={user.email ?? null}
       />
-      <CorridorProvider>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
       <CorridorProvider defaultCorridorId={profile?.assigned_corridor_id ?? null}>
         <main className="flex-1 overflow-y-auto">
           <DashboardTopBar />

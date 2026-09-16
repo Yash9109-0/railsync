@@ -1,22 +1,13 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useState,
-  type Dispatch,
-  type ReactNode,
-  type SetStateAction,
-} from "react";
+import { createContext, useContext, useState, type ReactNode, type Dispatch, type SetStateAction } from "react";
 
 export interface CorridorContextValue {
   selectedCorridorId: number | null;
   setSelectedCorridorId: Dispatch<SetStateAction<number | null>>;
 }
 
-const CorridorContext = createContext<CorridorContextValue | undefined>(
-  undefined,
-);
+const CorridorContext = createContext<CorridorContextValue | undefined>(undefined);
 
 export interface CorridorProviderProps {
   children: ReactNode;
@@ -28,30 +19,18 @@ export function CorridorProvider({
   defaultCorridorId = null,
 }: CorridorProviderProps) {
   const [selectedCorridorId, setSelectedCorridorId] = useState<number | null>(
-    () => defaultCorridorId ?? null,
+    () => defaultCorridorId ?? null
   );
 
   return (
-    <CorridorContext.Provider
-      value={{ selectedCorridorId, setSelectedCorridorId }}
-    >
     <CorridorContext.Provider value={{ selectedCorridorId, setSelectedCorridorId }}>
       {children}
     </CorridorContext.Provider>
   );
 }
 
-export function useCorridor(): CorridorContextValue {
-  const context = useContext(CorridorContext);
-  if (!context) {
-    throw new Error("useCorridor must be used within a CorridorProvider");
-  }
-  return context;
+export function useCorridor() {
   const ctx = useContext(CorridorContext);
-  if (!ctx) {
-    throw new Error(
-      "useCorridor must be used within a <CorridorProvider>",
-    );
-  }
+  if (!ctx) throw new Error("useCorridor must be used within CorridorProvider");
   return ctx;
 }

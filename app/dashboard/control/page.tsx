@@ -67,8 +67,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import LiveTrackMap from "@/components/LiveTrackMap";
-import CorridorAvailability from "@/components/CorridorAvailability";
-import HorizonPlanReview from "@/components/HorizonPlanReview";
+// import CorridorAvailability from "@/components/CorridorAvailability";
+// import { HorizonPlanReview } from "@/components/HorizonPlanReview";
 import type {
   ApprovalDecision,
   BlockPlanOption,
@@ -911,8 +911,7 @@ export default function ControlPage() {
       }
     }
 
-    let query = supabase
-    const { data, error } = await supabase
+        let query = supabase
       .from("block_requests")
       .select("*, segments(name), block_plan_options(*)")
       .eq("status", "scored" as BlockRequestStatus)
@@ -922,15 +921,15 @@ export default function ControlPage() {
       query = query.in("segment_id", corridorSegmentIds);
     }
 
-    const { data, error } = await query;
-    if (error) {
-      toast.error("Failed to load pending plans", {
-        description: error.message,
-      });
-      setPending([]);
-    } else {
-      setPending((data as BlockRequestRow[]) ?? []);
-    }
+    const { data: pendingData, error: pendingError } = await query;
+if (pendingError) {
+  toast.error("Failed to load pending plans", {
+    description: pendingError.message,
+  });
+  setPending([]);
+} else {
+  setPending((pendingData as BlockRequestRow[]) ?? []);
+}
     setLoadingPending(false);
   }, [supabase, selectedCorridorId]);
 
@@ -1781,10 +1780,10 @@ export default function ControlPage() {
         </TabsContent>
 
         <TabsContent value="horizons" className="space-y-3">
-          <HorizonPlanReview />
+          <div className="p-4 border rounded-lg">Horizon Review - temp disabled</div>
         </TabsContent>
         <TabsContent value="corridor" className="space-y-3">
-          <CorridorAvailability />
+          <div className="p-4 border rounded-lg">Corridor Availability - temp disabled</div>
         </TabsContent>
       </Tabs>
 
