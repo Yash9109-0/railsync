@@ -94,7 +94,8 @@ function computeActiveTrains(rows: TimetableEntry[], now: number): ComputedTrain
     const elapsedMin = (now - departedAt) / 60_000;
     if (elapsedMin < 0 || elapsedMin >= TOTAL_MINUTES) return;
     const segmentIndex = Math.min(NUM_SEGMENTS - 1, Math.max(0, Math.floor(elapsedMin / MINUTES_PER_SEGMENT)));
-    const progress = elapsedMin < segmentIndex * MINUTES_PER_SEGMENT? 0 : (elapsedMin % MINUTES_PER_SEGMENT) / MINUTES_PER_SEGMENT;
+    const progress =
+      elapsedMin < segmentIndex * MINUTES_PER_SEGMENT? 0 : (elapsedMin % MINUTES_PER_SEGMENT) / MINUTES_PER_SEGMENT;
     positions.push({ train_number, segmentIndex, progress, departedAt });
   });
 

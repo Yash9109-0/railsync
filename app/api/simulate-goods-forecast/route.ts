@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-const SEGMENT_NAMES = ['A-B', 'B-C', 'C-D', 'D-E']
 const FORECAST_DAYS = 30
 
 function rngInt(min: number, max: number): number {
@@ -15,8 +14,23 @@ function forecastDate(dayOffset: number): string {
   return d.toISOString().split('T')[0]
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   const supabase = createClient()
+
+  const body = (await req.json().catch(() => ({}))) as {
+    corridorId?: unknown
+  }
+
+  const corridorId = body.corridorId
+
+  if (corridorId == null || Number.isNaN(Number(corridorId))) {
+    return NextResponse.json(
+      { error: 'corridorId is required in the request body' },
+      { status: 400 }
+    )
+  }
+
+  const corridorIdNum = Number(corridorId)
 
   // Clear existing forecast rows so each run produces a fresh 30-day forecast.
   const { error: clearError } = await supabase
@@ -31,11 +45,11 @@ export async function POST() {
     )
   }
 
-  // Fetch the 4 corridor segments
+  // Fetch the segments belonging to the selected corridor.
   const { data: segmentRows, error: segmentError } = await supabase
     .from('segments')
     .select('id, name')
-    .in('name', SEGMENT_NAMES)
+    .eq('corridor_id', corridorIdNum)
 
   if (segmentError) {
     return NextResponse.json(
@@ -44,19 +58,19 @@ export async function POST() {
     )
   }
 
-  const segmentByName = new Map(
-    (segmentRows ?? []).map((segment) => [segment.name, segment.id])
-  )
-  const missing = SEGMENT_NAMES.filter((name) => !segmentByName.has(name))
+  const segments = segmentRows ?? []
 
-  if (missing.length > 0) {
+  if (segments.length === 0) {
     return NextResponse.json(
-      { error: 'Missing required segments', missing },
+      {
+        error: 'No segments found for the given corridor_id',
+        corridorId: corridorIdNum,
+      },
       { status: 404 }
     )
   }
 
-  const segmentIds = SEGMENT_NAMES.map((name) => segmentByName.get(name)!)
+  const segmentIds = segments.map((segment) => segment.id)
 
   // Build forecast rows: one per segment per day for the next 30 days
   const rows: {
@@ -100,7 +114,7 @@ export async function POST() {
       message: 'Goods train forecast generated',
       count: inserted?.length ?? rows.length,
       forecast_days: FORECAST_DAYS,
-      segments: SEGMENT_NAMES.length,
+      segments: segmentIds.length,
     },
     { status: 201 }
   )
