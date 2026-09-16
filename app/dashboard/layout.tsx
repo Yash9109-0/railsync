@@ -3,13 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { DashboardTopBar } from "@/components/dashboard-top-bar";
 import { CorridorProvider } from "@/context/CorridorContext";
-
+export const dynamic = "force-dynamic";
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },
