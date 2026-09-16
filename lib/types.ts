@@ -160,6 +160,7 @@ export interface BlockPlanHorizon {
   projected_availability_pct: number | null
   generated_at: string
   summary_explanation: string | null
+  items_improved_by_local_search: number | null
   created_at: string
 }
 
