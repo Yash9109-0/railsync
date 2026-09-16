@@ -68,6 +68,7 @@ import {
 import LiveTrackMap from "@/components/LiveTrackMap";
 import CorridorAvailability from "@/components/CorridorAvailability";
 import HorizonPlanReview from "@/components/HorizonPlanReview";
+import { useCorridor } from "@/context/CorridorContext";
 import type {
   ApprovalDecision,
   BlockPlanOption,
@@ -757,6 +758,7 @@ export default function ControlPage() {
   const supabaseRef = useRef<ReturnType<typeof createClient>>();
   if (!supabaseRef.current) supabaseRef.current = createClient();
   const supabase = supabaseRef.current;
+  const { selectedCorridorId } = useCorridor();
   const [liveTime, setLiveTime] = useState("");
   useEffect(() => {
     const tick = () => setLiveTime(new Date().toLocaleTimeString());
@@ -912,7 +914,11 @@ export default function ControlPage() {
   async function refreshTimetable() {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/simulate-timetable", { method: "POST" });
+      const res = await fetch("/api/simulate-timetable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ corridorId: selectedCorridorId }),
+      });
       const json = await res.json();
       if (!res.ok) {
         throw new Error(json?.error || "Failed to simulate timetable");
