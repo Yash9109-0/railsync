@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
+import { useCorridor } from "@/context/CorridorContext"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -177,6 +178,7 @@ export function CorridorAvailability() {
   const [segmentMap, setSegmentMap] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const { selectedCorridorId } = useCorridor()
 
   const dateRange = useMemo(() => dateRangeArray(startDate, endDate), [startDate, endDate])
 
@@ -186,9 +188,15 @@ export function CorridorAvailability() {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const { data: segData, error: segError } = await supabase
+        let segmentsQuery = supabase
           .from("segments")
           .select("id, name")
+
+        if (selectedCorridorId != null) {
+          segmentsQuery = segmentsQuery.eq("corridor_id", selectedCorridorId)
+        }
+
+        const { data: segData, error: segError } = await segmentsQuery
 
         if (segError) throw segError
 
@@ -232,7 +240,7 @@ export function CorridorAvailability() {
     }
 
     void fetchData()
-  }, [startDate, endDate, refreshKey])
+  }, [startDate, endDate, refreshKey, selectedCorridorId])
 
   const forecastLookup = useMemo(() => {
     const map = new Map<string, GoodsForecastRow>()
@@ -275,7 +283,7 @@ export function CorridorAvailability() {
 
   return (
     <div className="space-y-4">
-      <GoodsForecastPanel />
+      <GoodsForecastPanel corridorId={selectedCorridorId} />
 
       <Card>
         <CardHeader>

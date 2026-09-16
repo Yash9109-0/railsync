@@ -1013,7 +1013,11 @@ if (pendingError) {
   async function refreshTimetable() {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/simulate-timetable", { method: "POST" });
+      const res = await fetch("/api/simulate-timetable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ corridorId: selectedCorridorId }),
+      });
       const json = await res.json();
       if (!res.ok) {
         throw new Error(json?.error || "Failed to simulate timetable");

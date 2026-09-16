@@ -1,12 +1,26 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-const SEGMENTS = ['A-B', 'B-C', 'C-D', 'D-E']
 const TRAIN_COUNT = 15
 const WINDOW_MS = 24 * 60 * 60 * 1000
 
-export async function POST() {
+export async function POST(req: Request) {
   const supabase = createClient()
+
+  const body = (await req.json().catch(() => ({}))) as {
+    corridorId?: unknown
+  }
+
+  const corridorId = body.corridorId
+
+  if (corridorId == null || Number.isNaN(Number(corridorId))) {
+    return NextResponse.json(
+      { error: 'corridorId is required in the request body' },
+      { status: 400 }
+    )
+  }
+
+  const corridorIdNum = Number(corridorId)
 
   const { error: clearError } = await supabase
     .from('timetable')
@@ -23,7 +37,7 @@ export async function POST() {
   const { data: segmentRows, error: segmentError } = await supabase
     .from('segments')
     .select('id, name')
-    .in('name', SEGMENTS)
+    .eq('corridor_id', corridorIdNum)
 
   if (segmentError) {
     return NextResponse.json(
@@ -32,14 +46,14 @@ export async function POST() {
     )
   }
 
-  const segmentByName = new Map(
-    (segmentRows ?? []).map((segment) => [segment.name, segment.id])
-  )
-  const missing = SEGMENTS.filter((name) => !segmentByName.has(name))
+  const segments = segmentRows ?? []
 
-  if (missing.length > 0) {
+  if (segments.length === 0) {
     return NextResponse.json(
-      { error: 'Missing required segments', missing },
+      {
+        error: 'No segments found for the given corridor_id',
+        corridorId: corridorIdNum,
+      },
       { status: 404 }
     )
   }
@@ -47,7 +61,7 @@ export async function POST() {
   const now = Date.now()
   const trains = Array.from({ length: TRAIN_COUNT }, (_, i) => ({
     train_number: String(10001 + i),
-    segment_id: segmentByName.get(SEGMENTS[i % SEGMENTS.length])!,
+    segment_id: segments[i % segments.length].id,
     scheduled_time: new Date(now + (i / TRAIN_COUNT) * WINDOW_MS).toISOString(),
     status: 'scheduled' as const,
   }))

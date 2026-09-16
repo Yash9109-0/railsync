@@ -6,13 +6,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner"
 import { Loader2, TrainFront } from "lucide-react"
 
-export function GoodsForecastPanel() {
+export function GoodsForecastPanel({
+  corridorId,
+}: {
+  corridorId: number | null
+}) {
   const [loading, setLoading] = useState(false)
 
   const handleSimulate = async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/simulate-goods-forecast", { method: "POST" })
+      const res = await fetch("/api/simulate-goods-forecast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ corridorId }),
+      })
       const json = await res.json()
       if (!res.ok) {
         throw new Error(json?.error || "Failed to generate goods forecast")
