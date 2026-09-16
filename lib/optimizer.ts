@@ -49,6 +49,7 @@ const hoursFromMidnight = (d: Date) => (d.getTime() - utcMidnight(d)) / HOUR_MS
 export async function generateHorizonPlan(
   horizonType: 'weekly' | 'monthly',
   startDate: Date,
+  corridorId?: number | null,
 ): Promise<{ horizonId: string }> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -67,6 +68,7 @@ export async function generateHorizonPlan(
       horizon_start: startDate.toISOString(),
       horizon_end: endDate.toISOString(),
       status: 'draft',
+      corridor_id: corridorId ?? null,
       generated_at: new Date().toISOString(),
     })
     .select('id')
@@ -80,11 +82,32 @@ export async function generateHorizonPlan(
   const horizonId = horizon.id
   console.log('[optimizer] Created horizon', { horizonId, horizon_type: horizonType })
 
-  const { data: requestData, error: requestsErr } = await supabase
+  let requestQuery = supabase
     .from('block_requests')
     .select('id, segment_id, requested_start, requested_duration_mins, priority_score')
     .eq('status', 'scored')
     .order('priority_score', { ascending: false })
+
+  if (corridorId != null) {
+    const { data: segData, error: segErr } = await supabase
+      .from('segments')
+      .select('id')
+      .eq('corridor_id', corridorId)
+
+    if (segErr) {
+      console.error('[optimizer] Failed to fetch corridor segments:', segErr?.message)
+      throw new Error(segErr?.message ?? 'Failed to fetch corridor segments')
+    }
+
+    const corridorSegmentIds = (segData ?? []).map((s) => s.id)
+    if (corridorSegmentIds.length > 0) {
+      requestQuery = requestQuery.in('segment_id', corridorSegmentIds)
+    } else {
+      requestQuery = requestQuery.eq('segment_id', -1)
+    }
+  }
+
+  const { data: requestData, error: requestsErr } = await requestQuery
 
   if (requestsErr) {
     console.error('[optimizer] Failed to fetch scored block_requests:', requestsErr?.message)
@@ -92,7 +115,7 @@ export async function generateHorizonPlan(
   }
 
   const requests = (requestData ?? []) as RequestRow[]
-  console.log('[optimizer] Fetched scored requests', { count: requests.length })
+  console.log('[optimizer] Fetched scored requests', { count: requests.length, corridorId })
 
   const { data: forecastData, error: forecastErr } = await supabase
     .from('goods_train_forecast')

@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { DashboardPageHeader } from "@/components/dashboard-page-header"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
+import { useCorridor } from "@/context/CorridorContext"
 import {
   AlertOctagon,
   AlertTriangle,
@@ -385,6 +386,7 @@ function FeatureImportanceSection() {
 }
 
 export default function ScoredRequestsBoard() {
+  const { selectedCorridorId } = useCorridor()
   const [requests, setRequests] = useState<BlockRequestRow[]>([])
   const [optionsByRequest, setOptionsByRequest] = useState<Record<string, PlanOption[]>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -398,11 +400,36 @@ export default function ScoredRequestsBoard() {
 
   const loadAll = async () => {
     setLoading(true)
-    const { data, error } = await supabase
+
+    let corridorSegmentIds: number[] = []
+    if (selectedCorridorId != null) {
+      const { data: segData, error: segErr } = await supabase
+        .from("segments")
+        .select("id")
+        .eq("corridor_id", selectedCorridorId)
+
+      if (segErr) {
+        toast.error("Failed to load corridor segments")
+      } else {
+        corridorSegmentIds = (segData ?? []).map((s) => s.id)
+      }
+    }
+
+    let query = supabase
       .from("block_requests")
       .select("*")
       .in("status", ["submitted", "pending", "scored", "safety_blocked"])
       .order("created_at", { ascending: false })
+
+    if (selectedCorridorId != null) {
+      if (corridorSegmentIds.length > 0) {
+        query = query.in("segment_id", corridorSegmentIds)
+      } else {
+        query = query.eq("segment_id", -1)
+      }
+    }
+
+    const { data, error } = await query
 
     if (error) {
       toast.error("Failed to load block requests")
@@ -527,7 +554,7 @@ export default function ScoredRequestsBoard() {
       await sweepStuckRequests(false)
     }
     init()
-  }, [])
+  }, [selectedCorridorId])
 
   const handleReprocess = async (id: string) => {
     setReprocessing((p) => ({ ...p, [id]: true }))

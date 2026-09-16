@@ -4,6 +4,7 @@ import { generateHorizonPlan, generateHorizonSummary } from '@/lib/optimizer'
 type GenerateHorizonRequestBody = {
   horizonType?: unknown
   startDate?: unknown
+  corridorId?: unknown
 }
 
 export async function POST(request: NextRequest) {
@@ -17,6 +18,8 @@ export async function POST(request: NextRequest) {
 
     const horizonType = body?.horizonType
     const startDate = body?.startDate
+    const corridorId =
+      body?.corridorId == null ? null : Number(body?.corridorId)
 
     if (horizonType !== 'weekly' && horizonType !== 'monthly') {
       return NextResponse.json(
@@ -29,12 +32,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'startDate is required' }, { status: 400 })
     }
 
+    if (body?.corridorId != null && (Number.isNaN(corridorId) || !Number.isInteger(corridorId))) {
+      return NextResponse.json({ error: 'corridorId must be an integer' }, { status: 400 })
+    }
+
     const start = new Date(startDate)
     if (Number.isNaN(start.getTime())) {
       return NextResponse.json({ error: 'Invalid startDate' }, { status: 400 })
     }
 
-    const { horizonId } = await generateHorizonPlan(horizonType, start)
+    const { horizonId } = await generateHorizonPlan(horizonType, start, corridorId)
     await generateHorizonSummary(horizonId)
 
     return NextResponse.json({ horizonId })

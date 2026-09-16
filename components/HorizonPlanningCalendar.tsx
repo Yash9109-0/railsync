@@ -9,6 +9,7 @@ import { toast } from "sonner"
 import { useEffect, useState } from "react"
 import { ChevronDown, ChevronUp, Loader2, CalendarDays, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useCorridor } from "@/context/CorridorContext"
 
 type HorizonRow = {
   id: string
@@ -314,6 +315,7 @@ function CalendarLegend() {
 }
 
 export default function HorizonPlanningCalendar() {
+  const { selectedCorridorId } = useCorridor()
   const [horizonType, setHorizonType] = useState<"weekly" | "monthly">("weekly")
   const [horizonStartDate, setHorizonStartDate] = useState(() =>
     new Date().toISOString().split("T")[0],
@@ -329,7 +331,11 @@ export default function HorizonPlanningCalendar() {
   const loadHorizons = async () => {
     setHorizonsLoading(true)
     try {
-      const res = await fetch("/api/horizons", { cache: "no-store" })
+      const params = new URLSearchParams()
+      if (selectedCorridorId != null) {
+        params.set("corridorId", String(selectedCorridorId))
+      }
+      const res = await fetch(`/api/horizons?${params.toString()}`, { cache: "no-store" })
       const json = await res.json()
       if (!res.ok || json.error) {
         toast.error(json.error ?? "Failed to load planning horizons")
@@ -355,6 +361,7 @@ export default function HorizonPlanningCalendar() {
         body: JSON.stringify({
           horizonType,
           startDate: new Date(horizonStartDate).toISOString(),
+          corridorId: selectedCorridorId ?? null,
         }),
       })
       const json = await res.json()
@@ -658,7 +665,7 @@ export default function HorizonPlanningCalendar() {
 
   useEffect(() => {
     loadHorizons()
-  }, [])
+  }, [selectedCorridorId])
 
   return (
     <div className="space-y-6">
