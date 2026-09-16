@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { CorridorProvider } from "@/context/CorridorContext";
 
 export default async function DashboardLayout({
   children,
@@ -30,7 +31,9 @@ export default async function DashboardLayout({
         fullName={profile?.full_name ?? null}
         userEmail={user.email ?? null}
       />
-      <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      <CorridorProvider>
+        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      </CorridorProvider>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useCorridor } from "@/context/CorridorContext";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -57,6 +58,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import LiveTrackMap from "@/components/LiveTrackMap";
+import HorizonPlanReview from "@/components/HorizonPlanReview";
 import type {
   ApprovalDecision,
   BlockPlanOption,
@@ -285,6 +287,7 @@ interface PlanOptionWithLabel {
 
 interface ApprovedPlanRow {
   id: string;
+  segment_id: number | null;
   requested_duration_mins: number | null;
   delay_risk: string | null;
   segments: { name: string } | null;
@@ -315,25 +318,51 @@ interface TimeSavedAnalyticsProps {
   approvedCount: number;
   avgMs: number;
   sessionStart: number;
+  selectedCorridorId: number | null;
 }
 
 function TimeSavedAnalytics({
   approvedCount,
   avgMs,
   sessionStart,
+  selectedCorridorId,
 }: TimeSavedAnalyticsProps) {
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [segmentSeries, setSegmentSeries] = useState<ChartSeries[]>([]);
   const [riskSeries, setRiskSeries] = useState<ChartSeries[]>([]);
   const [loading, setLoading] = useState(true);
+  const [corridorName, setCorridorName] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
+    async function loadCorridorName() {
+      if (selectedCorridorId == null) {
+        if (!cancelled) setCorridorName(null);
+        return;
+      }
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("corridors")
+        .select("name")
+        .eq("id", selectedCorridorId)
+        .maybeSingle();
+      if (!cancelled && !error) {
+        setCorridorName((data as { name: string } | null)?.name ?? null);
+      }
+    }
+
     async function load() {
-      // 4 stat cards: aggregates from the analytics endpoint
+      setLoading(true);
+
+      // 4 stat cards: aggregates from the analytics endpoint, scoped to the
+      // currently selected corridor when one is chosen.
       try {
-        const res = await fetch("/api/analytics");
+        const url =
+          selectedCorridorId != null
+            ? `/api/analytics?corridor_id=${selectedCorridorId}`
+            : "/api/analytics";
+        const res = await fetch(url);
         if (res.ok) {
           const json: AnalyticsSummary = await res.json();
           if (!cancelled) setSummary(json);
@@ -346,10 +375,40 @@ function TimeSavedAnalytics({
 
       // Breakdown series: approved plans joined with segment + Option A baseline
       const supabase = createClient();
-      const { data, error: fetchError } = await supabase
+
+      let corridorSegmentIds: number[] | null = null;
+      if (selectedCorridorId != null) {
+        const { data: segmentData, error: segmentError } = await supabase
+          .from("segments")
+          .select("id")
+          .eq("corridor_id", selectedCorridorId);
+        if (segmentError || !cancelled) {
+          if (!cancelled) {
+            corridorSegmentIds = null;
+          }
+        } else {
+          corridorSegmentIds = (segmentData ?? []).map((s) => s.id);
+          if (corridorSegmentIds.length === 0) {
+            if (!cancelled) {
+              setSegmentSeries([]);
+              setRiskSeries([]);
+              setLoading(false);
+            }
+            return;
+          }
+        }
+      }
+
+      let query = supabase
         .from("block_requests")
         .select("*, segments(name), block_plan_options(*)")
         .eq("status", "approved");
+
+      if (selectedCorridorId != null && corridorSegmentIds) {
+        query = query.in("segment_id", corridorSegmentIds);
+      }
+
+      const { data, error: fetchError } = await query;
       void fetchError;
 
       if (!cancelled) {
@@ -381,11 +440,12 @@ function TimeSavedAnalytics({
       if (!cancelled) setLoading(false);
     }
 
+    void loadCorridorName();
     void load();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedCorridorId]);
 
   const avgMins = avgMs > 0 ? Number((avgMs / 60000).toFixed(2)) : 0;
   const chartData = [
@@ -412,6 +472,13 @@ function TimeSavedAnalytics({
     Math.max(1, ...series.map((s) => s.saved)) + 5,
   ];
 
+  const corridorSubtitle =
+    selectedCorridorId != null && corridorName != null
+      ? `Showing: Corridor ${selectedCorridorId} - ${corridorName}`
+      : selectedCorridorId != null
+        ? `Showing: Corridor ${selectedCorridorId}`
+        : "Showing: All corridors";
+
   return (
     <section className="mt-6 space-y-4">
       <Card>
@@ -424,6 +491,9 @@ function TimeSavedAnalytics({
             Track-time savings from approved block requests. Aggregates are
             served by /api/analytics against the as-requested Option A baseline;
             breakdown charts are estimated from per-request Option A baselines.
+          </CardDescription>
+          <CardDescription className="text-xs text-muted-foreground/80">
+            {corridorSubtitle}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -653,6 +723,7 @@ function TimeSavedAnalytics({
 }
 
 export default function ControlPage() {
+  const { selectedCorridorId } = useCorridor();
   const supabaseRef = useRef<ReturnType<typeof createClient>>();
   if (!supabaseRef.current) supabaseRef.current = createClient();
   const supabase = supabaseRef.current;
@@ -707,11 +778,42 @@ useEffect(() => {
 
   const fetchPending = useCallback(async () => {
     setLoadingPending(true);
-       const { data, error } = await supabase
+    let corridorSegmentIds: number[] | null = null;
+
+    if (selectedCorridorId != null) {
+      const { data, error } = await supabase
+        .from("segments")
+        .select("id")
+        .eq("corridor_id", selectedCorridorId);
+
+      if (error) {
+        toast.error("Failed to load corridor segments", {
+          description: error.message,
+        });
+        setPending([]);
+        setLoadingPending(false);
+        return;
+      }
+
+      corridorSegmentIds = (data ?? []).map((segment) => segment.id);
+      if (corridorSegmentIds.length === 0) {
+        setPending([]);
+        setLoadingPending(false);
+        return;
+      }
+    }
+
+    let query = supabase
       .from("block_requests")
       .select("*, segments(name), block_plan_options(*)")
       .eq("status", "scored" as BlockRequestStatus)
       .order("priority_score", { ascending: false, nullsFirst: false });
+
+    if (selectedCorridorId != null && corridorSegmentIds) {
+      query = query.in("segment_id", corridorSegmentIds);
+    }
+
+    const { data, error } = await query;
     if (error) {
       toast.error("Failed to load pending plans", { description: error.message });
       setPending([]);
@@ -719,7 +821,7 @@ useEffect(() => {
       setPending((data as BlockRequestRow[]) ?? []);
     }
     setLoadingPending(false);
-  }, [supabase]);
+  }, [supabase, selectedCorridorId]);
 
   const fetchApprovals = useCallback(async () => {
     if (!user) {
@@ -994,6 +1096,7 @@ useEffect(() => {
           <TabsTrigger value="timetable">Timetable</TabsTrigger>
           <TabsTrigger value="pending">Pending Plans</TabsTrigger>
           <TabsTrigger value="verify">Verify Field Work</TabsTrigger>
+          <TabsTrigger value="horizons">Horizon Plans</TabsTrigger>
         </TabsList>
 
         <TabsContent value="timetable" className="space-y-3">
@@ -1439,6 +1542,10 @@ useEffect(() => {
             })
           )}
         </TabsContent>
+
+        <TabsContent value="horizons" className="space-y-3">
+          <HorizonPlanReview />
+        </TabsContent>
       </Tabs>
 
       {loadingApprovals && !approvals.length ? (
@@ -1446,12 +1553,14 @@ useEffect(() => {
           approvedCount={0}
           avgMs={0}
           sessionStart={sessionStartRef.current}
+          selectedCorridorId={selectedCorridorId}
         />
       ) : (
         <TimeSavedAnalytics
           approvedCount={approvedCount}
           avgMs={avgMs}
           sessionStart={sessionStartRef.current}
+          selectedCorridorId={selectedCorridorId}
         />
       )}
 
