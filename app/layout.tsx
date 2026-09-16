@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider, ThemeScript } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
-import "leaflet/dist/leaflet.css";
+//import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 const inter = Inter({
@@ -22,10 +22,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <ThemeScript />
+      </head>
       <body
         className={`${inter.variable} antialiased`}
       >
-        <ThemeProvider attribute="class" defaultTheme="light">
+        <ThemeProvider>
           {children}
           <Toaster />
         </ThemeProvider>

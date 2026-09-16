@@ -2,6 +2,7 @@ export interface Profile {
   id: string
   full_name: string | null
   role: string | null
+  assigned_corridor_id: number | null
   created_at: string
 }
 
@@ -16,6 +17,12 @@ export interface Segment {
   name: string
   from_station_id: number
   to_station_id: number
+  corridor_id: number | null
+}
+
+export interface Corridor {
+  id: number
+  name: string
 }
 
 export type TimetableStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'delayed'
@@ -144,7 +151,47 @@ export interface BlockPlanOption {
   priority_score: number | null
   delay_risk: string | null
   explanation: string | null
-  is_recommended: boolean | null
+  justification: string | null
+  created_at: string
+}
+
+export type HorizonType = 'weekly' | 'monthly'
+export type HorizonStatus = 'draft' | 'active' | 'completed' | 'cancelled'
+
+export interface BlockPlanHorizon {
+  id: string
+  horizon_type: HorizonType
+  horizon_start: string
+  horizon_end: string
+  status: HorizonStatus | null
+  projected_availability_pct: number | null
+  generated_at: string
+  summary_explanation: string | null
+  created_at: string
+}
+
+export interface GoodsTrainForecast {
+  id: number
+  segment_id: number | null
+  forecast_date: string
+  expected_goods_trains: number
+  peak_hour_start: number | null
+  peak_hour_end: number | null
+  created_at: string
+}
+
+export type HorizonItemStatus = 'scheduled' | 'deferred'
+
+export interface BlockPlanHorizonItem {
+  id: string
+  horizon_id: string
+  block_request_id: string
+  assigned_date: string | null
+  assigned_start_hour: number | null
+  assigned_duration_mins: number | null
+  priority_score: number | null
+  status: HorizonItemStatus | null
+  reason: string | null
   created_at: string
 }
 
@@ -161,6 +208,10 @@ export type Tables =
   | { table: 'retraining_log'; row: RetrainingLog }
   | { table: 'block_plan_options'; row: BlockPlanOption }
   | { table: 'defects'; row: Defect }
+  | { table: 'block_plan_horizons'; row: BlockPlanHorizon }
+  | { table: 'block_plan_horizon_items'; row: BlockPlanHorizonItem }
+  | { table: 'goods_train_forecast'; row: GoodsTrainForecast }
+  | { table: 'corridors'; row: Corridor }
 
 export type TableName = Tables['table']
 

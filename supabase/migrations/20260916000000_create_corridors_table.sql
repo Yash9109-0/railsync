@@ -8,6 +8,7 @@ create table if not exists corridors (
   description text,
   is_active boolean not null default true,
   created_at timestamp with time zone default now()
+  name text not null unique
 );
 
 alter table profiles

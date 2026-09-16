@@ -35,6 +35,7 @@ export function CorridorProvider({
     <CorridorContext.Provider
       value={{ selectedCorridorId, setSelectedCorridorId }}
     >
+    <CorridorContext.Provider value={{ selectedCorridorId, setSelectedCorridorId }}>
       {children}
     </CorridorContext.Provider>
   );
@@ -46,4 +47,11 @@ export function useCorridor(): CorridorContextValue {
     throw new Error("useCorridor must be used within a CorridorProvider");
   }
   return context;
+  const ctx = useContext(CorridorContext);
+  if (!ctx) {
+    throw new Error(
+      "useCorridor must be used within a <CorridorProvider>",
+    );
+  }
+  return ctx;
 }

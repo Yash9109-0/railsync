@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { DashboardTopBar } from "@/components/dashboard-top-bar";
 import { CorridorProvider } from "@/context/CorridorContext";
 
 export default async function DashboardLayout({
@@ -20,7 +21,7 @@ export default async function DashboardLayout({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, full_name")
+    .select("role, full_name, assigned_corridor_id")
     .eq("id", user.id)
     .single();
 
@@ -33,6 +34,11 @@ export default async function DashboardLayout({
       />
       <CorridorProvider>
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      <CorridorProvider defaultCorridorId={profile?.assigned_corridor_id ?? null}>
+        <main className="flex-1 overflow-y-auto">
+          <DashboardTopBar />
+          <div className="page-container py-6">{children}</div>
+        </main>
       </CorridorProvider>
     </div>
   );

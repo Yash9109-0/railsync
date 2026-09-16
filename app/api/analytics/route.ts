@@ -80,6 +80,7 @@ function emptyResult(totalApproved: number) {
     track_asset_availability_gain_pct: 0,
     total_approved: totalApproved,
     total_time_saved_mins: 0,
+    avg_priority_score: 0,
   }
 }
 
@@ -177,6 +178,8 @@ export async function GET(req: Request) {
     let totalTimeSavedMins = 0
     let totalRequestedDurationMins = 0
     let estimatedPassengerDelayReductionMins = 0
+    let totalPriorityScore = 0
+    let scoredCount = 0
 
     for (const request of requests) {
       const chosenApproval = chosenApprovalFor(request.id)
@@ -188,6 +191,15 @@ export async function GET(req: Request) {
 
       const approvedDuration = resolveApprovedDuration(request, chosenApproval)
       totalRequestedDurationMins += approvedDuration
+
+      const rawPriority = request.priority_score
+      if (rawPriority != null) {
+        const ps = Number(rawPriority)
+        if (Number.isFinite(ps)) {
+          totalPriorityScore += ps
+          scoredCount += 1
+        }
+      }
 
       if (baseline && baseline.adjusted_duration_mins != null) {
         const timeSavedMins =
@@ -206,11 +218,15 @@ export async function GET(req: Request) {
         ? (totalTimeSavedMins / totalRequestedDurationMins) * 100
         : 0
 
+    const avgPriorityScore =
+      scoredCount > 0 ? totalPriorityScore / scoredCount : 0
+
     return NextResponse.json({
       estimated_passenger_delay_reduction_mins: estimatedPassengerDelayReductionMins,
       track_asset_availability_gain_pct: trackAssetAvailabilityGainPct,
       total_approved: requests.length,
       total_time_saved_mins: totalTimeSavedMins,
+      avg_priority_score: avgPriorityScore,
     })
   } catch (error) {
     return NextResponse.json(

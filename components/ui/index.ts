@@ -65,7 +65,10 @@ export {
 export { Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage } from "./avatar";
 export { Skeleton } from "./skeleton";
 export { Progress } from "./progress";
+export { CircularGauge } from "./circular-gauge";
+export type { GaugeColor } from "./circular-gauge";
 export { Toaster } from "./sonner";
 export { toast } from "sonner";
 export { Slider } from "./slider";
+export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "./tooltip";
 export { Separator } from "./separator";

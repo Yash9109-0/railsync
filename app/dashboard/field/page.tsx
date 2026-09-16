@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useCorridor } from "@/context/CorridorContext"
 import { toast } from "sonner"
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -26,16 +28,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui"
+import { DashboardPageHeader } from "@/components/dashboard-page-header"
 import { Loader2, MapPin, PlayCircle, RefreshCw, Upload, Clock } from "lucide-react"
-import type { BlockRequest, BlockRequestStatus, ExecutionLog } from "@/lib/types"
+import type {
+  BlockRequest,
+  BlockRequestStatus,
+  DefectStatus,
+  ExecutionLog,
+} from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-interface SegmentName {
+interface SegmentInfo {
   name: string
+  corridor_id: number | null
 }
 
 interface BlockRequestRow extends BlockRequest {
-  segments: SegmentName | null
+  segments: SegmentInfo | null
 }
 
 const POLL_INTERVAL_MS = 15_000
@@ -45,10 +54,14 @@ const supabase = createClient()
 const TOUCH_TARGET = "min-h-[44px] min-w-[44px]"
 
 export default function FieldPage() {
+  const { selectedCorridorId } = useCorridor()
   const [approved, setApproved] = useState<BlockRequestRow[]>([])
   const [inProgress, setInProgress] = useState<BlockRequestRow[]>([])
   const [completed, setCompleted] = useState<BlockRequestRow[]>([])
   const [logsByRequest, setLogsByRequest] = useState<Map<string, ExecutionLog>>(
+    new Map(),
+  )
+  const [corridorNames, setCorridorNames] = useState<Map<number, string>>(
     new Map(),
   )
 
@@ -72,20 +85,32 @@ export default function FieldPage() {
     setLoading(true)
     const { data: reqData, error: reqErr } = await supabase
       .from("block_requests")
-      .select("*, segments(name)")
+      .select("*, segments(name, corridor_id)")
       .order("created_at", { ascending: false })
     const { data: logData, error: logErr } = await supabase
       .from("execution_logs")
       .select("*")
       .order("created_at", { ascending: false })
+    const { data: corrData, error: corrErr } = await supabase
+      .from("corridors")
+      .select("id, name")
 
     if (reqErr) toast.error("Failed to load requests", { description: reqErr.message })
     if (logErr) toast.error("Failed to load work logs", { description: logErr.message })
+    if (corrErr) toast.error("Failed to load corridors", { description: corrErr.message })
+
+    setCorridorNames(new Map((corrData ?? []).map((c) => [c.id, c.name])))
 
     const requests = (reqData ?? []) as BlockRequestRow[]
-    setApproved(requests.filter((r) => r.status === "approved"))
-    setInProgress(requests.filter((r) => r.status === "in_progress"))
-    setCompleted(requests.filter((r) => r.status === "executed"))
+    const visible =
+      selectedCorridorId == null
+        ? requests
+        : requests.filter(
+            (r) => r.segments?.corridor_id === selectedCorridorId,
+          )
+    setApproved(visible.filter((r) => r.status === "approved"))
+    setInProgress(visible.filter((r) => r.status === "in_progress"))
+    setCompleted(visible.filter((r) => r.status === "executed"))
 
     const byRequest = new Map<string, ExecutionLog>()
     for (const log of (logData ?? []) as ExecutionLog[]) {
@@ -102,7 +127,7 @@ export default function FieldPage() {
     const id = setInterval(fetchAll, POLL_INTERVAL_MS)
     return () => clearInterval(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [selectedCorridorId])
 
   const handleStart = async (req: BlockRequestRow) => {
     setActingId(req.id)
@@ -228,7 +253,26 @@ export default function FieldPage() {
         .eq("id", completeTarget.id)
       if (reqErr) throw reqErr
 
+      const { data: linkedDefects, error: defectLookupErr } = await supabase
+        .from("defects")
+        .select("id")
+        .eq("linked_block_request_id", completeTarget.id)
+      if (defectLookupErr) throw defectLookupErr
+
+      const hasLinkedDefect = linkedDefects && linkedDefects.length > 0
+
+      if (hasLinkedDefect) {
+        const { error: defectUpdateErr } = await supabase
+          .from("defects")
+          .update({ status: "resolved" as DefectStatus })
+          .eq("linked_block_request_id", completeTarget.id)
+        if (defectUpdateErr) throw defectUpdateErr
+      }
+
       toast.success("Work completed — logged for AI learning.")
+      if (hasLinkedDefect) {
+        toast.success("Linked defect marked resolved.")
+      }
 
       fetch("/api/update-stats", {
         method: "POST",
@@ -263,6 +307,26 @@ export default function FieldPage() {
   const segmentLabel = (r: BlockRequestRow) =>
     r.segments?.name ?? `Segment #${r.segment_id ?? "—"}`
 
+  const corridorLabel = (r: BlockRequestRow) => {
+    const cid = r.segments?.corridor_id ?? null
+    if (cid == null) return null
+    return corridorNames.get(cid) ?? `Corridor #${cid}`
+  }
+
+  const segmentCell = (r: BlockRequestRow) => {
+    const label = corridorLabel(r)
+    return (
+      <div className="flex items-center gap-1.5">
+        <span>{segmentLabel(r)}</span>
+        {label ? (
+          <Badge variant="secondary" className="text-xs">
+            {label}
+          </Badge>
+        ) : null}
+      </div>
+    )
+  }
+
   const shortId = (id: string) => id.slice(0, 8)
 
   const varianceBadge = (variance: number | null) => {
@@ -273,20 +337,20 @@ export default function FieldPage() {
     }
     if (variance < 0) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
           Saved {Math.abs(variance)} min
         </span>
       )
     }
     if (variance > 0) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/30 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:text-red-300">
           Over by {variance} min
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
         On time
       </span>
     )
@@ -307,34 +371,30 @@ export default function FieldPage() {
 
   return (
     <div className="space-y-8 bg-white min-h-screen">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
-            Field Execution Dashboard
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Start approved work, complete it with site photos and a location,
-            and review execution performance.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setRefreshing(true)
-            fetchAll().finally(() => setRefreshing(false))
-          }}
-          disabled={refreshing}
-          className={cn(TOUCH_TARGET)}
-        >
-          {refreshing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Refresh
-        </Button>
-      </div>
+      <DashboardPageHeader
+        icon={MapPin}
+        title="Field Execution Dashboard"
+        description="Start approved work, complete it with site photos and a location, and review execution performance."
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setRefreshing(true)
+              fetchAll().finally(() => setRefreshing(false))
+            }}
+            disabled={refreshing}
+            className={cn(TOUCH_TARGET)}
+          >
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Section 1 — Approved */}
       <Card>
@@ -394,7 +454,7 @@ export default function FieldPage() {
                           <TableCell className="font-mono">
                             {shortId(r.id)}
                           </TableCell>
-                          <TableCell>{segmentLabel(r)}</TableCell>
+                          <TableCell>{segmentCell(r)}</TableCell>
                           <TableCell className="capitalize">{r.work_type}</TableCell>
                           <TableCell>
                             {new Date(r.requested_start).toLocaleString(
@@ -472,7 +532,7 @@ export default function FieldPage() {
                         <TableCell className="font-mono">
                           {shortId(r.id)}
                         </TableCell>
-                        <TableCell>{segmentLabel(r)}</TableCell>
+                        <TableCell>{segmentCell(r)}</TableCell>
                         <TableCell className="capitalize">{r.work_type}</TableCell>
                         <TableCell>
                           {started
@@ -575,7 +635,7 @@ export default function FieldPage() {
                             <TableCell className="font-mono">
                               {shortId(r.id)}
                             </TableCell>
-                            <TableCell>{segmentLabel(r)}</TableCell>
+                            <TableCell>{segmentCell(r)}</TableCell>
                             <TableCell className="capitalize">
                               {r.work_type}
                             </TableCell>
@@ -600,8 +660,8 @@ export default function FieldPage() {
 
       {/* Complete Work dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-lg bg-white">
-          <DialogHeader>
+      <DialogContent className="w-[95vw] max-w-lg bg-background">
+        <DialogHeader>
             <DialogTitle>Complete Work</DialogTitle>
             <DialogDescription>
               {completeTarget
