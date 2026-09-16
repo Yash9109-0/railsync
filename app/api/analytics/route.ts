@@ -84,9 +84,16 @@ function emptyResult(totalApproved: number) {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const supabase = createClient()
+
+    const { searchParams } = new URL(req.url)
+    const corridorIdParam = searchParams.get('corridor_id')
+    const corridorId =
+      corridorIdParam != null && corridorIdParam !== ''
+        ? Number(corridorIdParam)
+        : null
 
     const { data: approvedRequests, error: requestsError } = await supabase
       .from('block_requests')
@@ -101,7 +108,30 @@ export async function GET() {
       )
     }
 
-    const requests = (approvedRequests as BlockRequestRow[] | null) ?? []
+    let requests = (approvedRequests as BlockRequestRow[] | null) ?? []
+
+    // Scope aggregates to a corridor when one is requested: resolve the
+    // corridor's segment ids and keep only requests attached to them.
+    if (corridorId != null && Number.isFinite(corridorId)) {
+      const { data: segmentData, error: segmentError } = await supabase
+        .from('segments')
+        .select('id')
+        .eq('corridor_id', corridorId)
+
+      if (segmentError) {
+        return NextResponse.json(
+          { error: segmentError.message },
+          { status: 500 },
+        )
+      }
+
+      const segmentIds = new Set(
+        (segmentData ?? []).map((s: { id: number }) => s.id),
+      )
+      requests = requests.filter(
+        (r) => r.segment_id != null && segmentIds.has(r.segment_id),
+      )
+    }
 
     // Join partners in application code (robust to foreign-key inference).
     const requestIds = requests.map((r) => r.id)

@@ -2,12 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useCorridor } from "@/context/CorridorContext"
 import { toast } from "sonner"
 import {
   Badge,
   Button,
   Card,
   CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
   CardFooter,
   CardHeader,
   CircularGauge,
@@ -25,6 +30,9 @@ import {
 import {
   CalendarClock,
   Check,
+  ClipboardList,
+  Loader2,
+  RefreshCw,
   CheckCircle,
   ClipboardList,
   Clock,
@@ -47,10 +55,12 @@ interface HorizonRow {
   generated_at: string
   summary_explanation: string | null
   created_at: string
+  corridor_id?: number | null
 }
 
 interface BlockRequestRef {
   work_description: string | null
+  segments: { name: string; corridor_id?: number | null } | null
   segments: { name: string } | null
 }
 
@@ -72,6 +82,18 @@ const UNDATED_GROUP_KEY = "__undated__"
 
 function cap(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+function fmtDateRange(start: string, end: string): string {
+  const s = new Date(start)
+  const e = new Date(end)
+  if (isNaN(s.getTime()) && isNaN(e.getTime())) return "—"
+  const opts: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }
+  return `${s.toLocaleDateString("en-US", opts)} – ${e.toLocaleDateString("en-US", opts)}`
 }
 
 function fmtDateTime(iso: string): string {
@@ -112,6 +134,9 @@ function fmtDuration(mins: number | null): string {
   return h > 0 ? `${h}h ${rest}m` : `${rest} min`
 }
 
+function fmtPct(n: number | null): string {
+  if (n == null || Number.isNaN(Number(n))) return "—"
+  return Number.isInteger(n) ? `${n}%` : `${n.toFixed(1)}%`
 function availabilityColorClass(pct: number | null): GaugeColor {
   if (pct == null || Number.isNaN(Number(pct))) return "muted"
   const p = Number(pct)
@@ -336,6 +361,42 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
   return (
     <Card>
       <CardHeader>
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Badge className={HORIZON_TYPE_BADGE[horizon.horizon_type]}>
+                {cap(horizon.horizon_type)}
+              </Badge>
+              <CalendarClock className="h-4 w-4 text-muted-foreground" />
+              {fmtDateRange(horizon.horizon_start, horizon.horizon_end)}
+              <Badge className={statusBadge.className}>{statusBadge.label}</Badge>
+            </CardTitle>
+            <CardDescription className="max-w-[65ch]">
+              {horizon.summary_explanation ?? "No plan narrative available."}
+            </CardDescription>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>Generated {fmtDateTime(horizon.generated_at)}</span>
+              <Separator orientation="vertical" className="h-3" />
+              <span>
+                {scheduledCount} scheduled · {items.length - scheduledCount} deferred
+              </span>
+              <Separator orientation="vertical" className="h-3" />
+              <span>
+                Availability goal met:{" "}
+                {horizon.projected_availability_pct != null
+                  ? `${horizon.projected_availability_pct}%`
+                  : "—"}
+              </span>
+            </div>
+          </div>
+          <div className="mt-2 text-right sm:mt-0">
+            <div className="text-3xl font-bold tabular-nums">
+              {fmtPct(horizon.projected_availability_pct)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Projected availability
+            </p>
+          </div>
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5">
             <Badge className={HORIZON_TYPE_BADGE[horizon.horizon_type]}>
@@ -487,6 +548,7 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
                 <Check className="h-4 w-4" />
               )}
               <span className="ml-1">
+                {submitting ? "Approving…" : "Approve This Plan"}
                 {submitting ? (
                   "Approving…"
                 ) : (
@@ -507,6 +569,8 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
+                Approve this entire {cap(horizon.horizon_type)} plan covering{" "}
+                {scheduledCount} request{scheduledCount === 1 ? "" : "s"}?
                 Approve this entire {cap(horizon.horizon_type)} plan?
               </DialogTitle>
               <DialogDescription>
@@ -544,6 +608,7 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
                   <Check className="h-4 w-4" />
                 )}
                 <span className="ml-1">
+                  {submitting ? "Approving…" : "Approve All"}
                   {submitting ? (
                     "Approving…"
                   ) : (
@@ -615,6 +680,7 @@ function HorizonListSkeleton() {
 
 export default function HorizonPlanReview() {
   const supabase = useSupabase()
+  const { selectedCorridorId } = useCorridor()
 
   const [horizons, setHorizons] = useState<HorizonRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -622,6 +688,91 @@ export default function HorizonPlanReview() {
 
   const fetchHorizons = useCallback(async () => {
     setLoading(true)
+
+    if (selectedCorridorId != null) {
+      const { data: directData, error: directError } = await supabase
+        .from("block_plan_horizons")
+        .select("*")
+        .eq("status", "draft")
+        .eq("corridor_id", selectedCorridorId)
+        .order("generated_at", { ascending: false })
+
+      if (!directError) {
+        setHorizons((directData as HorizonRow[]) ?? [])
+      } else {
+        const { data: segmentData, error: segmentError } = await supabase
+          .from("segments")
+          .select("id")
+          .eq("corridor_id", selectedCorridorId)
+
+        if (segmentError) {
+          toast.error("Failed to load corridor segments", {
+            description: segmentError.message,
+          })
+          setHorizons([])
+        } else {
+          const corridorSegmentIds = new Set(
+            (segmentData ?? []).map((s: { id: number }) => s.id),
+          )
+
+          if (corridorSegmentIds.size === 0) {
+            setHorizons([])
+          } else {
+            const { data: nestedData, error: fallbackError } = await supabase
+              .from("block_plan_horizons")
+              .select(
+                "*, block_plan_horizon_items(block_request_id, block_requests(segments(corridor_id)))",
+              )
+              .eq("status", "draft")
+              .order("generated_at", { ascending: false })
+
+            if (fallbackError) {
+              toast.error("Failed to load horizon plans", {
+                description: fallbackError.message,
+              })
+              setHorizons([])
+            } else {
+              const filtered = (nestedData ?? [])
+                .filter((horizon: any) =>
+                  (horizon.block_plan_horizon_items ?? []).some(
+                    (item: any) => {
+                      const seg = item.block_requests?.segments
+                      return (
+                        seg?.corridor_id !== undefined &&
+                        corridorSegmentIds.has(seg.corridor_id as number)
+                      )
+                    },
+                  ),
+                )
+                .map((horizon: any) => {
+                  const { block_plan_horizon_items, ...rest } = horizon
+                  return rest as HorizonRow
+                })
+
+              setHorizons(filtered)
+            }
+          }
+        }
+      }
+    } else {
+      const { data, error } = await supabase
+        .from("block_plan_horizons")
+        .select("*")
+        .eq("status", "draft")
+        .order("generated_at", { ascending: false })
+
+      if (error) {
+        toast.error("Failed to load horizon plans", {
+          description: error.message,
+        })
+        setHorizons([])
+      } else {
+        setHorizons((data as HorizonRow[]) ?? [])
+      }
+    }
+
+    setLoading(false)
+  }, [supabase, selectedCorridorId])
     const { data, error } = await supabase
       .from("block_plan_horizons")
       .select("*")
