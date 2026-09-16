@@ -31,7 +31,7 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("corridors")
-        .select("id, name, description, is_active, created_at")
+        .select("id, name")
         .order("name");
 
       if (error) {
@@ -102,13 +102,12 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
                       No corridors available
                     </span>
                   ) : (
-                    corridors.map((corridor) => (
-                      <SelectItem
-                        key={corridor.id}
-                        value={String(corridor.id)}
-                        textValue={corridor.name}
-                        disabled={!corridor.is_active}
-                        className="data-[selected=true]:bg-primary/5 data-[selected=true]:text-primary"
+                      corridors.map((corridor) => (
+                        <SelectItem
+                          key={corridor.id}
+                          value={String(corridor.id)}
+                          textValue={corridor.name}
+                          className="data-[selected=true]:bg-primary/5 data-[selected=true]:text-primary"
                       >
                         <div className="flex items-center justify-between w-full">
                           <span>{corridor.name}</span>

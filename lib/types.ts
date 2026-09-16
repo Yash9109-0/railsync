@@ -23,9 +23,6 @@ export interface Segment {
 export interface Corridor {
   id: number
   name: string
-  description: string | null
-  is_active: boolean | null
-  created_at: string
 }
 
 export type TimetableStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'delayed'

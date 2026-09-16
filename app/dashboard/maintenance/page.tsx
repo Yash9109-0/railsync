@@ -405,7 +405,7 @@ export default function MaintenancePage() {
     }
 
     fetchData()
-  }, [selectedCorridorId])
+  }, [selectedCorridorId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchDefects = async (segmentIds: number[] = segments.map((s) => s.id)) => {
     const supabase = createClient()
