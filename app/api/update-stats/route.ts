@@ -62,12 +62,41 @@ export async function POST(req: Request) {
     }
     avgRate = Math.max(0, avgRate)
 
+    const { data: existingStats, error: fetchError } = await supabase
+      .from('segment_stats')
+      .select('capacity_pct')
+      .eq('segment_id', segment_id)
+      .eq('work_type', work_type)
+      .maybeSingle()
+
+    if (fetchError) throw fetchError
+
+    const currentCapacity = (existingStats?.capacity_pct ?? 20) as number
+
+    let newCapacity = currentCapacity
+    let capacityChanged = false
+
+    if (avgRate > 0.25) {
+      newCapacity = Math.max(10, currentCapacity - 2)
+      capacityChanged = newCapacity !== currentCapacity
+    } else if (avgRate < 0.05) {
+      newCapacity = Math.min(30, currentCapacity + 2)
+      capacityChanged = newCapacity !== currentCapacity
+    }
+
+    if (capacityChanged) {
+      console.log(`Segment ${segment_id}-${work_type} capacity adjusted from ${currentCapacity}% to ${newCapacity}% based on overrun_rate ${avgRate}`)
+    } else {
+      console.log(`Segment ${segment_id}-${work_type} capacity unchanged at ${currentCapacity}% based on overrun_rate ${avgRate}`)
+    }
+
     const { error: upsertError } = await supabase
       .from('segment_stats')
       .upsert({
         segment_id,
         work_type,
         historical_overrun_rate: avgRate,
+        capacity_pct: newCapacity,
         sample_count: validCount,
         last_updated: new Date().toISOString()
       }, { onConflict: 'segment_id,work_type' })
@@ -79,7 +108,8 @@ export async function POST(req: Request) {
       segment_id,
       work_type,
       avgRate,
-      count: validCount
+      count: validCount,
+      capacity_pct: newCapacity
     })
 
   } catch (e: any) {

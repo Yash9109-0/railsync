@@ -59,7 +59,6 @@ export async function generateHorizonPlan(
   const dayOffset = horizonType === 'weekly' ? 7 : 30
   const endDate = new Date(startDate.getTime() + dayOffset * DAY_MS)
   const horizonMinutes = (endDate.getTime() - startDate.getTime()) / 60000
-  const capPerSegment = 0.2 * horizonMinutes
 
   const { data: horizon, error: horizonErr } = await supabase
     .from('block_plan_horizons')
@@ -176,6 +175,7 @@ export async function generateHorizonPlan(
 
   const committedSlotsBySegment = new Map<number, CommittedSlot[]>()
   const committedMinutesBySegment = new Map<number, number>()
+  const capacityPctBySegment = new Map<number, number>()
   const planningSegments = new Set<number>()
   let totalCommittedMinutes = 0
 
@@ -265,6 +265,25 @@ export async function generateHorizonPlan(
 
     planningSegments.add(segment)
 
+    if (!capacityPctBySegment.has(segment)) {
+      const { data: statData, error: statErr } = await supabase
+        .from('segment_stats')
+        .select('capacity_pct')
+        .eq('segment_id', segment)
+        .limit(1)
+      if (statErr) {
+        console.warn(
+          '[optimizer] Failed to fetch segment_stats capacity_pct for segment',
+          segment,
+          ':',
+          statErr.message,
+        )
+      }
+      const capacityPct = (statData?.[0]?.capacity_pct ?? 20) as number
+      capacityPctBySegment.set(segment, capacityPct)
+      console.log('[optimizer] Segment capacity', { segment, capacityPct })
+    }
+    const capPerSegment = (capacityPctBySegment.get(segment)! / 100) * horizonMinutes
     const committedMin = committedMinutesBySegment.get(segment) ?? 0
     if (committedMin + duration > capPerSegment) {
       items.push({
@@ -425,6 +444,7 @@ export async function generateHorizonPlan(
       totalCommittedMinutes -= schedDuration
 
       // Capacity check after removal.
+      const capPerSegment = (capacityPctBySegment.get(segment)! / 100) * horizonMinutes
       if (committedMinBefore - schedDuration + duration > capPerSegment) {
         slots.splice(slotIdx, 0, {
           date: schedDate,

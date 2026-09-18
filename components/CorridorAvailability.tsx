@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { useCorridor } from "@/context/CorridorContext"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -176,6 +177,7 @@ export function CorridorAvailability() {
   const [forecastData, setForecastData] = useState<GoodsForecastRow[]>([])
   const [passengerPerSegment, setPassengerPerSegment] = useState<Record<number, number>>({})
   const [segmentMap, setSegmentMap] = useState<Record<number, string>>({})
+  const [segmentCapacity, setSegmentCapacity] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const { selectedCorridorId } = useCorridor()
@@ -205,6 +207,22 @@ export function CorridorAvailability() {
           segMap[seg.id] = seg.name
         }
         setSegmentMap(segMap)
+
+        const { data: statsRows, error: statsError } = await supabase
+          .from("segment_stats")
+          .select("segment_id, capacity_pct")
+
+        const capMap: Record<number, number> = {}
+        if (statsError) {
+          console.warn("[CorridorAvailability] Failed to fetch segment_stats capacity_pct:", statsError.message)
+        } else {
+          for (const stat of (statsRows ?? []) as { segment_id: number; capacity_pct: number | null }[]) {
+            if (!(stat.segment_id in capMap)) {
+              capMap[stat.segment_id] = stat.capacity_pct ?? 20
+            }
+          }
+        }
+        setSegmentCapacity(capMap)
 
         const { data: forecastRows, error: forecastError } = await supabase
           .from("goods_train_forecast")
@@ -395,17 +413,42 @@ export function CorridorAvailability() {
                     </div>
                   ))}
 
-                  {segmentIds.map((segId) => {
-                    const segName = segmentMap[segId] ?? `Segment ${segId}`
-                    const passengerCount = passengerPerSegment[segId] ?? 0
-                    return (
-                      <React.Fragment key={segId}>
-                        <div className="flex h-10 items-center gap-2 text-sm font-medium">
-                          {segName}
-                          <span className="text-xs text-muted-foreground">
-                            ({passengerCount} passengers)
-                          </span>
-                        </div>
+                   {segmentIds.map((segId) => {
+                     const segName = segmentMap[segId] ?? `Segment ${segId}`
+                     const passengerCount = passengerPerSegment[segId] ?? 0
+                     const capacityPct = segmentCapacity[segId]
+                     const capacityAdjusted = capacityPct != null && capacityPct !== 20
+                     const capacityBadgeClass =
+                       capacityPct < 20
+                         ? "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-600/20"
+                         : "text-green-700 dark:text-green-400 bg-green-500/10 border-green-600/20"
+                     return (
+                       <React.Fragment key={segId}>
+                         <div className="flex h-10 items-center gap-2 text-sm font-medium">
+                           {segName}
+                           <span className="text-xs text-muted-foreground">
+                             ({passengerCount} passengers)
+                           </span>
+                           {capacityAdjusted && (
+                             <Tooltip>
+                               <TooltipTrigger asChild>
+                                 <Badge
+                                   variant="outline"
+                                   className={cn("text-xs", capacityBadgeClass)}
+                                 >
+                                   Capacity: {capacityPct}% (adjusted from history)
+                                 </Badge>
+                               </TooltipTrigger>
+                               <TooltipContent side="top" className="max-w-xs">
+                                 <p>
+                                   This segment's scheduling capacity has been
+                                   automatically adjusted based on past execution
+                                   performance.
+                                 </p>
+                               </TooltipContent>
+                             </Tooltip>
+                           )}
+                         </div>
                         {dateRange.map((date) => {
                           const cell = cellFor(segId, date)
                           return (

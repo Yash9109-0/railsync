@@ -106,6 +106,7 @@ export interface SegmentStats {
   segment_id: number
   work_type: string
   historical_overrun_rate: number
+  capacity_pct: number | null
   sample_count: number
   last_updated: string
 }

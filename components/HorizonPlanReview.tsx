@@ -13,8 +13,6 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-  CardFooter,
-  CardHeader,
   CircularGauge,
   type GaugeColor,
   Dialog,
@@ -34,10 +32,7 @@ import {
   Loader2,
   RefreshCw,
   CheckCircle,
-  ClipboardList,
   Clock,
-  Loader2,
-  RefreshCw,
   Sparkles,
   TrendingUp,
 } from "lucide-react"
@@ -61,7 +56,6 @@ interface HorizonRow {
 interface BlockRequestRef {
   work_description: string | null
   segments: { name: string; corridor_id?: number | null } | null
-  segments: { name: string } | null
 }
 
 interface HorizonItemRow {
@@ -137,6 +131,8 @@ function fmtDuration(mins: number | null): string {
 function fmtPct(n: number | null): string {
   if (n == null || Number.isNaN(Number(n))) return "—"
   return Number.isInteger(n) ? `${n}%` : `${n.toFixed(1)}%`
+}
+
 function availabilityColorClass(pct: number | null): GaugeColor {
   if (pct == null || Number.isNaN(Number(pct))) return "muted"
   const p = Number(pct)
@@ -433,6 +429,7 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
           <span>
             {scheduledCount} scheduled · {items.length - scheduledCount} deferred
           </span>
+        </div>
         </div>
       </CardHeader>
 
@@ -773,21 +770,6 @@ export default function HorizonPlanReview() {
 
     setLoading(false)
   }, [supabase, selectedCorridorId])
-    const { data, error } = await supabase
-      .from("block_plan_horizons")
-      .select("*")
-      .eq("status", "draft")
-      .order("generated_at", { ascending: false })
-    if (error) {
-      toast.error("Failed to load horizon plans", {
-        description: error.message,
-      })
-      setHorizons([])
-    } else {
-      setHorizons((data as HorizonRow[]) ?? [])
-    }
-    setLoading(false)
-  }, [supabase])
 
   useEffect(() => {
     void fetchHorizons()
