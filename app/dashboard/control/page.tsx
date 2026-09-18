@@ -47,7 +47,6 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   LabelList,
-  Cell,
   Label,
 } from "recharts";
 import {
@@ -143,18 +142,15 @@ interface VerifyLogRow {
 const POLL_INTERVAL_MS = 30_000;
 const MANUAL_BASELINE_MINS = 18;
 
-const PURPLE_PALETTE = [
-  "hsl(268 95% 50%)",
-  "hsl(268 95% 42%)",
-  "hsl(268 95% 58%)",
-  "hsl(268 95% 66%)",
-  "hsl(275 90% 37%)",
-];
-
-const CHART_TOOLTIP_STYLE: Record<string, string> = {
-  backgroundColor: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
+const CHART_TOOLTIP_STYLE: Record<string, string | number> = {
+  backgroundColor: "#ffffff",
+  color: "hsl(var(--card-foreground))",
   border: "1px solid hsl(var(--border))",
+  borderRadius: "8px",
+  boxShadow:
+    "0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)",
+  padding: "8px 12px",
+  fontSize: "12px",
 };
 
 function statusVariant(
@@ -404,35 +400,40 @@ function TimeSavedAnalytics({
       // Breakdown series: approved plans joined with segment + Option A baseline
       const supabase = createClient();
 
-      let corridorSegmentIds: number[] | null = null;
+      let segmentQuery = supabase
+        .from("segments")
+        .select("id, name")
+        .order("id");
       if (selectedCorridorId != null) {
-        const { data: segmentData, error: segmentError } = await supabase
-          .from("segments")
-          .select("id")
-          .eq("corridor_id", selectedCorridorId);
-        if (segmentError || !cancelled) {
-          if (!cancelled) {
-            corridorSegmentIds = null;
-          }
-        } else {
-          corridorSegmentIds = (segmentData ?? []).map((s) => s.id);
-          if (corridorSegmentIds.length === 0) {
-            if (!cancelled) {
-              setSegmentSeries([]);
-              setRiskSeries([]);
-              setLoading(false);
-            }
-            return;
-          }
+        segmentQuery = segmentQuery.eq("corridor_id", selectedCorridorId);
+      }
+      const { data: segmentRows, error: segmentError } = await segmentQuery;
+
+      if (segmentError) {
+        if (!cancelled) {
+          setSegmentSeries([]);
+          setRiskSeries([]);
+          setLoading(false);
         }
+        return;
+      }
+
+      const corridorSegmentIds = (segmentRows ?? []).map((s) => s.id);
+      if (selectedCorridorId != null && corridorSegmentIds.length === 0) {
+        if (!cancelled) {
+          setSegmentSeries([]);
+          setRiskSeries([]);
+          setLoading(false);
+        }
+        return;
       }
 
       let query = supabase
         .from("block_requests")
-        .select("*, segments(name), block_plan_options(*)")
+        .select("*, segments!inner(name), block_plan_options(*)")
         .eq("status", "approved");
 
-      if (selectedCorridorId != null && corridorSegmentIds) {
+      if (selectedCorridorId != null && corridorSegmentIds.length > 0) {
         query = query.in("segment_id", corridorSegmentIds);
       }
 
@@ -440,30 +441,75 @@ function TimeSavedAnalytics({
       void fetchError;
 
       if (!cancelled) {
-        const bySegment = new Map<string, number>();
-        const byRisk = new Map<string, number>();
+        const plans = (data as ApprovedPlanRow[] | null) ?? [];
 
-        for (const req of (data as ApprovedPlanRow[] | null) ?? []) {
-          const baseline = analyticsBaselineOption(req.block_plan_options);
-          if (!baseline || baseline.adjusted_duration_mins == null) continue;
-          const approvedDuration = Number(req.requested_duration_mins ?? 0);
-          const saved =
-            Number(baseline.adjusted_duration_mins) - approvedDuration;
+        if (plans.length === 0) {
+          setSegmentSeries([]);
+          setRiskSeries([]);
+        } else {
+          // Pre-populate all expected segments for the corridor/system with 0
+          const expectedSegments = (segmentRows ?? []).map((s) => s.name);
+          const bySegment = new Map<string, number>();
+          for (const segName of expectedSegments) {
+            bySegment.set(segName, 0);
+          }
 
-          const segmentName = req.segments?.name ?? "Unknown";
-          bySegment.set(segmentName, (bySegment.get(segmentName) ?? 0) + saved);
+          // Pre-populate all expected delay risk tiers with 0
+          const EXPECTED_RISK_TIERS = ["Low", "Medium", "High"];
+          const byRisk = new Map<string, number>();
+          for (const tier of EXPECTED_RISK_TIERS) {
+            byRisk.set(tier, 0);
+          }
 
-          const riskName = req.delay_risk ?? "Unknown";
-          byRisk.set(riskName, (byRisk.get(riskName) ?? 0) + saved);
-        }
+          for (const req of plans) {
+            // Exclude block_requests where the segment join doesn't resolve to a real segment
+            if (!req.segments?.name) continue;
 
-        const toSeries = (map: Map<string, number>): ChartSeries[] =>
-          Array.from(map, ([key, saved]) => ({ key, saved })).sort(
-            (a, b) => b.saved - a.saved,
+            const baseline = analyticsBaselineOption(req.block_plan_options);
+            if (!baseline || baseline.adjusted_duration_mins == null) continue;
+            const approvedDuration = Number(req.requested_duration_mins ?? 0);
+            const saved =
+              Number(baseline.adjusted_duration_mins) - approvedDuration;
+
+            const segmentName = req.segments.name;
+            bySegment.set(segmentName, (bySegment.get(segmentName) ?? 0) + saved);
+
+            const rawRisk = req.delay_risk?.trim();
+            const riskName = rawRisk
+              ? rawRisk.charAt(0).toUpperCase() + rawRisk.slice(1).toLowerCase()
+              : null;
+            if (riskName) {
+              byRisk.set(riskName, (byRisk.get(riskName) ?? 0) + saved);
+            }
+          }
+
+          const toSeries = (
+            map: Map<string, number>,
+            tieBreaker?: (a: string, b: string) => number,
+          ): ChartSeries[] =>
+            Array.from(map, ([key, saved]) => ({ key, saved })).sort(
+              (a, b) =>
+                b.saved - a.saved ||
+                (tieBreaker
+                  ? tieBreaker(a.key, b.key)
+                  : a.key.localeCompare(b.key)),
+            );
+
+          const RISK_ORDER: Record<string, number> = {
+            Low: 1,
+            Medium: 2,
+            High: 3,
+            Critical: 4,
+          };
+
+          setSegmentSeries(toSeries(bySegment));
+          setRiskSeries(
+            toSeries(
+              byRisk,
+              (a, b) => (RISK_ORDER[a] ?? 99) - (RISK_ORDER[b] ?? 99),
+            ),
           );
-
-        setSegmentSeries(toSeries(bySegment));
-        setRiskSeries(toSeries(byRisk));
+        }
       }
 
       if (!cancelled) setLoading(false);
@@ -481,12 +527,10 @@ function TimeSavedAnalytics({
     {
       metric: "AI-Assisted",
       minutes: avgMins,
-      fill: "hsl(268 95% 50%)",
     },
     {
       metric: "Manual Baseline",
       minutes: MANUAL_BASELINE_MINS,
-      fill: "hsl(38 92% 50%)",
     },
   ];
 
@@ -577,12 +621,25 @@ function TimeSavedAnalytics({
               <ResponsiveContainer>
                 <BarChart
                   data={segmentSeries}
-                  margin={{ top: 8, right: 0, left: 0, bottom: 0 }}
+                  margin={{ top: 12, right: 16, left: 60, bottom: 0 }}
                 >
+                  <defs>
+                    <linearGradient
+                      id="timeSavedSegmentGradient"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="0%" stopColor="#960DF2" />
+                      <stop offset="100%" stopColor="#C084FC" />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
-                    stroke="hsl(var(--border))"
+                    stroke="#e2e8f0"
+                    strokeOpacity={0.6}
                   />
                   <XAxis
                     dataKey="key"
@@ -612,15 +669,22 @@ function TimeSavedAnalytics({
                     <Label
                       angle={-90}
                       position="insideLeft"
-                      offset={12}
+                      offset={10}
+                      style={{ textAnchor: "middle" }}
                       className="fill-muted-foreground text-xs"
                     >
                       Time saved (min)
                     </Label>
                   </YAxis>
                   <Tooltip
-                    cursor={false}
+                    cursor={{ fill: "rgba(150, 13, 242, 0.04)" }}
                     contentStyle={CHART_TOOLTIP_STYLE}
+                    itemStyle={{ color: "#0f172a", fontWeight: 500 }}
+                    labelStyle={{
+                      color: "#64748b",
+                      fontWeight: 600,
+                      marginBottom: "2px",
+                    }}
                     formatter={(v) => [
                       `${Number(v ?? 0).toFixed(1)} min`,
                       "Time saved",
@@ -629,18 +693,18 @@ function TimeSavedAnalytics({
                   <Bar
                     dataKey="saved"
                     name="Time saved (min)"
-                    radius={[8, 8, 0, 0]}
+                    fill="url(#timeSavedSegmentGradient)"
+                    radius={[6, 6, 0, 0]}
+                    animationDuration={600}
                   >
-                    {segmentSeries.map((_, i) => (
-                      <Cell
-                        key={`segment-cell-${i}`}
-                        fill={PURPLE_PALETTE[i % PURPLE_PALETTE.length]}
-                      />
-                    ))}
                     <LabelList
                       position="top"
                       offset={4}
-                      formatter={(v) => `${Number(v ?? 0).toFixed(1)} min`}
+                      formatter={(v) =>
+                        Number(v ?? 0) > 0
+                          ? `${Number(v).toFixed(1)} min`
+                          : ""
+                      }
                     />
                   </Bar>
                 </BarChart>
@@ -667,12 +731,25 @@ function TimeSavedAnalytics({
               <ResponsiveContainer>
                 <BarChart
                   data={riskSeries}
-                  margin={{ top: 8, right: 0, left: 0, bottom: 0 }}
+                  margin={{ top: 12, right: 16, left: 60, bottom: 0 }}
                 >
+                  <defs>
+                    <linearGradient
+                      id="timeSavedRiskGradient"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="0%" stopColor="#960DF2" />
+                      <stop offset="100%" stopColor="#C084FC" />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
-                    stroke="hsl(var(--border))"
+                    stroke="#e2e8f0"
+                    strokeOpacity={0.6}
                   />
                   <XAxis
                     dataKey="key"
@@ -702,15 +779,22 @@ function TimeSavedAnalytics({
                     <Label
                       angle={-90}
                       position="insideLeft"
-                      offset={12}
+                      offset={10}
+                      style={{ textAnchor: "middle" }}
                       className="fill-muted-foreground text-xs"
                     >
                       Time saved (min)
                     </Label>
                   </YAxis>
                   <Tooltip
-                    cursor={false}
+                    cursor={{ fill: "rgba(150, 13, 242, 0.04)" }}
                     contentStyle={CHART_TOOLTIP_STYLE}
+                    itemStyle={{ color: "#0f172a", fontWeight: 500 }}
+                    labelStyle={{
+                      color: "#64748b",
+                      fontWeight: 600,
+                      marginBottom: "2px",
+                    }}
                     formatter={(v) => [
                       `${Number(v ?? 0).toFixed(1)} min`,
                       "Time saved",
@@ -719,18 +803,18 @@ function TimeSavedAnalytics({
                   <Bar
                     dataKey="saved"
                     name="Time saved (min)"
-                    radius={[8, 8, 0, 0]}
+                    fill="url(#timeSavedRiskGradient)"
+                    radius={[6, 6, 0, 0]}
+                    animationDuration={600}
                   >
-                    {riskSeries.map((_, i) => (
-                      <Cell
-                        key={`risk-cell-${i}`}
-                        fill={PURPLE_PALETTE[i % PURPLE_PALETTE.length]}
-                      />
-                    ))}
                     <LabelList
                       position="top"
                       offset={4}
-                      formatter={(v) => `${Number(v ?? 0).toFixed(1)} min`}
+                      formatter={(v) =>
+                        Number(v ?? 0) > 0
+                          ? `${Number(v).toFixed(1)} min`
+                          : ""
+                      }
                     />
                   </Bar>
                 </BarChart>
@@ -756,19 +840,66 @@ function TimeSavedAnalytics({
             <ResponsiveContainer>
               <BarChart
                 data={chartData}
-                margin={{ top: 8, right: 0, left: 0, bottom: 0 }}
+                margin={{ top: 12, right: 16, left: 60, bottom: 0 }}
               >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="metric" tickLine={false} axisLine={false} />
+                <defs>
+                  <linearGradient
+                    id="approvalProcessingGradient"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop offset="0%" stopColor="#960DF2" />
+                    <stop offset="100%" stopColor="#C084FC" />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#e2e8f0"
+                  strokeOpacity={0.6}
+                />
+                <XAxis
+                  dataKey="metric"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={10}
+                  tick={{
+                    fontSize: 11,
+                    fill: "hsl(var(--muted-foreground))",
+                  }}
+                />
                 <YAxis
                   tickLine={false}
                   axisLine={false}
-                  tickMargin={4}
+                  tickMargin={8}
+                  tick={{
+                    fontSize: 11,
+                    fill: "hsl(var(--muted-foreground))",
+                  }}
                   tickFormatter={(v) => `${v} min`}
                   domain={[0, Math.max(MANUAL_BASELINE_MINS, avgMins) + 5]}
-                />
+                >
+                  <Label
+                    angle={-90}
+                    position="insideLeft"
+                    offset={10}
+                    style={{ textAnchor: "middle" }}
+                    className="fill-muted-foreground text-xs"
+                  >
+                    Processing time (min)
+                  </Label>
+                </YAxis>
                 <Tooltip
-                  cursor={false}
+                  cursor={{ fill: "rgba(150, 13, 242, 0.04)" }}
+                  contentStyle={CHART_TOOLTIP_STYLE}
+                  itemStyle={{ color: "#0f172a", fontWeight: 500 }}
+                  labelStyle={{
+                    color: "#64748b",
+                    fontWeight: 600,
+                    marginBottom: "2px",
+                  }}
                   formatter={(v) => [
                     `${Number(v ?? 0).toFixed(1)} min`,
                     "Processing time",
@@ -777,11 +908,10 @@ function TimeSavedAnalytics({
                 <Bar
                   dataKey="minutes"
                   name="Processing time (min)"
-                  radius={[8, 8, 0, 0]}
+                  fill="url(#approvalProcessingGradient)"
+                  radius={[6, 6, 0, 0]}
+                  animationDuration={600}
                 >
-                  {chartData.map((d) => (
-                    <Cell key={d.metric} fill={d.fill} />
-                  ))}
                   <LabelList
                     position="top"
                     offset={4}

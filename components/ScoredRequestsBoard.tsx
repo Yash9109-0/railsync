@@ -35,7 +35,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  Cell,
   LabelList,
 } from "recharts"
 
@@ -190,18 +189,17 @@ type FeatureImportance = {
   importance: number
 }
 
-const PURPLE_SHADES = [
-  "hsl(268 95% 50%)",
-  "hsl(268 90% 62%)",
-  "hsl(268 85% 70%)",
-  "hsl(268 80% 78%)",
-  "hsl(268 75% 84%)",
-]
 
-const CHART_TOOLTIP_STYLE: Record<string, string> = {
-  backgroundColor: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
+
+const CHART_TOOLTIP_STYLE: Record<string, string | number> = {
+  backgroundColor: "#ffffff",
+  color: "hsl(var(--card-foreground))",
   border: "1px solid hsl(var(--border))",
+  borderRadius: "8px",
+  boxShadow:
+    "0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)",
+  padding: "8px 12px",
+  fontSize: "12px",
 }
 
 function FeatureImportanceSection() {
@@ -320,12 +318,25 @@ function FeatureImportanceSection() {
               <BarChart
                 layout="vertical"
                 data={data}
-                margin={{ top: 8, right: 8, left: 20, bottom: 8 }}
+                margin={{ top: 8, right: 16, left: 24, bottom: 8 }}
               >
+                <defs>
+                  <linearGradient
+                    id="featureImportanceGradient"
+                    x1="0"
+                    y1="0"
+                    x2="1"
+                    y2="0"
+                  >
+                    <stop offset="0%" stopColor="#960DF2" />
+                    <stop offset="100%" stopColor="#C084FC" />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid
+                  horizontal={false}
                   strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="hsl(var(--border))"
+                  stroke="#e2e8f0"
+                  strokeOpacity={0.6}
                 />
                 <XAxis
                   type="number"
@@ -346,12 +357,18 @@ function FeatureImportanceSection() {
                     fontSize: 11,
                     fill: "hsl(var(--muted-foreground))",
                   }}
-                   width={140}
-                   reversed
-                 />
+                  width={140}
+                  reversed
+                />
                 <Tooltip
-                  cursor={false}
+                  cursor={{ fill: "rgba(150, 13, 242, 0.04)" }}
                   contentStyle={CHART_TOOLTIP_STYLE}
+                  itemStyle={{ color: "#0f172a", fontWeight: 500 }}
+                  labelStyle={{
+                    color: "#64748b",
+                    fontWeight: 600,
+                    marginBottom: "2px",
+                  }}
                   formatter={(v) => [
                     `${Number((v as number) * 100).toFixed(1)}%`,
                     "Importance",
@@ -359,14 +376,10 @@ function FeatureImportanceSection() {
                 />
                 <Bar
                   dataKey="importance"
-                  radius={[0, 8, 8, 0]}
+                  fill="url(#featureImportanceGradient)"
+                  radius={[0, 6, 6, 0]}
+                  animationDuration={600}
                 >
-                  {data.map((_, i) => (
-                    <Cell
-                      key={`fi-cell-${i}`}
-                      fill={PURPLE_SHADES[i % PURPLE_SHADES.length]}
-                    />
-                  ))}
                   <LabelList
                     position="right"
                     offset={6}
