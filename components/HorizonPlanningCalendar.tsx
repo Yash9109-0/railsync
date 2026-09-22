@@ -18,6 +18,7 @@ type HorizonRow = {
   projected_availability_pct: number | null
   summary_explanation: string | null
   generated_at: string
+  solver_used?: string
 }
 
 type HorizonItemRow = {
@@ -595,6 +596,19 @@ export default function HorizonPlanningCalendar() {
                 <Badge variant="outline" className={horizonTypeBadge(h.horizon_type)}>
                   {h.horizon_type === "weekly" ? "Weekly" : "Monthly"}
                 </Badge>
+                
+                {/* --- NAYA AI SOLVER BADGE --- */}
+                {h.solver_used === 'cp-sat' ? (
+                  <Badge className="bg-purple-600 hover:bg-purple-700 text-white shadow-sm">
+                    Optimal (CP-SAT)
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    Heuristic (Fallback)
+                  </Badge>
+                )}
+                {/* ----------------------------- */}
+
                 <span className="text-xs text-muted-foreground">
                   {formatDate(h.horizon_start)} → {formatDate(h.horizon_end)}
                 </span>

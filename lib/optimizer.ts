@@ -7,46 +7,242 @@ const LLM_TIMEOUT_MS = 10000
 const DEPARTMENTS: string[] = ['TMS', 'TDMS', 'SMMS']
 
 type CommittedSlot = {
-  date: string
-  start_hour: number
-  duration_mins: number
+  date: string
+  start_hour: number
+  duration_mins: number
 }
 
 type RequestRow = {
-  id: string
-  segment_id: number | null
-  requested_start: string
-  requested_duration_mins: number
-  priority_score: number | null
+  id: string
+  segment_id: number | null
+  requested_start: string
+  requested_duration_mins: number
+  priority_score: number | null
 }
 
 type ForecastRow = {
-  segment_id: number | null
-  forecast_date: string
-  peak_hour_start: number | null
-  peak_hour_end: number | null
+  segment_id: number | null
+  forecast_date: string
+  peak_hour_start: number | null
+  peak_hour_end: number | null
 }
 
 type HorizonItemRow = {
-  horizon_id: string
-  block_request_id: string
-  assigned_date: string | null
-  assigned_start_hour: number | null
-  assigned_duration_mins: number
-  priority_score: number | null
-  status: 'scheduled' | 'deferred'
-  reason: string
+  horizon_id: string
+  block_request_id: string
+  assigned_date: string | null
+  assigned_start_hour: number | null
+  assigned_duration_mins: number
+  priority_score: number | null
+  status: 'scheduled' | 'deferred'
+  reason: string
 }
 
 const hourOverlaps = (s1: number, d1: number, s2: number, d2: number) =>
-  s1 < s2 + d2 && s2 < s1 + d1
+  s1 < s2 + d2 && s2 < s1 + d1
 
 const utcMidnight = (d: Date) =>
-  Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
 
 const hoursFromMidnight = (d: Date) => (d.getTime() - utcMidnight(d)) / HOUR_MS
-
 export async function generateHorizonPlan(
+  horizonType: 'weekly' | 'monthly',
+  startDate: Date,
+  corridorId?: number
+): Promise<{ horizonId: string }> {
+  try {
+    const HORIZON_MINS = horizonType === 'weekly' ? 10080 : 43200;
+    const dayOffset = horizonType === 'weekly' ? 7 : 30;
+    const endDate = new Date(startDate.getTime() + dayOffset * DAY_MS);
+    
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    console.log("[optimizer] Fetching data for CP-SAT Solver...");
+
+    // 1. Fetch Segments
+    let segmentIds: number[] | undefined;
+    if (corridorId != null) {
+      const { data: corridorSegs, error: segErr } = await supabase
+        .from('segments')
+        .select('id')
+        .eq('corridor_id', corridorId);
+      if (segErr) throw new Error(`Failed to fetch segments: ${segErr.message}`);
+      segmentIds = (corridorSegs ?? []).map((s: { id: number }) => s.id);
+    }
+
+    // 2. Fetch Requests
+    let requestQuery = supabase
+      .from('block_requests')
+      .select('id, segment_id, requested_start, requested_duration_mins, priority_score')
+      .eq('status', 'scored')
+      .order('priority_score', { ascending: false });
+
+    if (segmentIds && segmentIds.length > 0) {
+      requestQuery = requestQuery.in('segment_id', segmentIds);
+    } else if (segmentIds) {
+      // empty segments
+      requestQuery = requestQuery.in('segment_id', [-1]); 
+    }
+
+    const { data: reqData, error: reqErr } = await requestQuery;
+    if (reqErr) throw new Error(`Failed to fetch requests: ${reqErr.message}`);
+    const requests = (reqData ?? []) as RequestRow[];
+
+    // 3. Fetch Segment Capacities
+    const uniqueSegments = [...new Set(requests.map(r => r.segment_id).filter(id => id != null))] as number[];
+    const segment_capacity_mins: Record<number, number> = {};
+    
+    if (uniqueSegments.length > 0) {
+      const { data: statData } = await supabase
+        .from('segment_stats')
+        .select('segment_id, capacity_pct')
+        .in('segment_id', uniqueSegments);
+      
+      const capMap = new Map((statData || []).map(s => [s.segment_id, s.capacity_pct]));
+      for (const segId of uniqueSegments) {
+        const pct = capMap.get(segId) ?? 20;
+        segment_capacity_mins[segId] = (pct / 100) * HORIZON_MINS;
+      }
+    }
+
+    // 4. Build API Payload
+    const validRequests = requests.filter(r => r.segment_id != null);
+    const apiPayload = {
+      horizon_total_mins: HORIZON_MINS,
+      segment_capacity_mins: segment_capacity_mins,
+      requests: validRequests.map((req) => {
+        let preferred = 0;
+        if (req.requested_start) {
+          const reqStart = new Date(req.requested_start).getTime();
+          preferred = Math.max(0, Math.floor((reqStart - startDate.getTime()) / 60000));
+        }
+        return {
+          id: req.id,
+          segment_id: req.segment_id,
+          duration_mins: req.requested_duration_mins,
+          priority_score: req.priority_score ?? 0,
+          preferred_start_mins: preferred,
+          avoids_peak_start_mins: [] 
+        };
+      })
+    };
+
+    console.log("[optimizer] Calling CP-SAT Solver API...");
+    const ML_API_URL = process.env.ML_API_URL || 'https://YOUR-RENDER-URL.onrender.com';
+    const response = await fetch(`${ML_API_URL}/solve-horizon`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(apiPayload),
+      signal: AbortSignal.timeout(15000)
+    });
+
+    if (!response.ok) {
+      throw new Error(`ML API Failed with status: ${response.status}`);
+    }
+
+    const solverResults = await response.json();
+
+    // 5. Create Horizon Row (CP-SAT success)
+    const { data: horizon, error: horizonErr } = await supabase
+      .from('block_plan_horizons')
+      .insert({
+        horizon_type: horizonType,
+        horizon_start: startDate.toISOString(),
+        horizon_end: endDate.toISOString(),
+        status: 'draft',
+        generated_at: new Date().toISOString(),
+        corridor_id: corridorId ?? null,
+        solver_used: 'cp-sat' // <--- New DB flag
+      })
+      .select('id')
+      .single<{ id: string }>();
+
+    if (horizonErr || !horizon) throw new Error(horizonErr?.message ?? 'Failed to create horizon');
+    const horizonId = horizon.id;
+
+    // 6. Format and Insert Items
+    const itemsToInsert: HorizonItemRow[] = [];
+    let scheduledCount = 0;
+    let deferredCount = 0;
+    let totalScheduledMins = 0;
+
+    for (const res of solverResults) {
+      const originalReq = requests.find(r => r.id === res.id);
+      if (!originalReq) continue;
+
+      if (res.scheduled && res.start_mins != null) {
+        const itemDate = new Date(startDate.getTime() + res.start_mins * 60000);
+        itemsToInsert.push({
+          horizon_id: horizonId,
+          block_request_id: res.id,
+          assigned_date: itemDate.toISOString().slice(0, 10),
+          assigned_start_hour: hoursFromMidnight(itemDate),
+          assigned_duration_mins: res.duration_mins,
+          priority_score: originalReq.priority_score,
+          status: 'scheduled',
+          reason: 'Placed optimally by CP-SAT solver.'
+        });
+        scheduledCount++;
+        totalScheduledMins += res.duration_mins;
+      } else {
+        itemsToInsert.push({
+          horizon_id: horizonId,
+          block_request_id: res.id,
+          assigned_date: null,
+          assigned_start_hour: null,
+          assigned_duration_mins: res.duration_mins,
+          priority_score: originalReq.priority_score,
+          status: 'deferred',
+          reason: 'Deferred — could not fit within segment capacity during solver optimization.'
+        });
+        deferredCount++;
+      }
+    }
+
+    // Catch requests that had no segment
+    for (const req of requests) {
+      if (req.segment_id == null) {
+        itemsToInsert.push({
+          horizon_id: horizonId,
+          block_request_id: req.id,
+          assigned_date: null,
+          assigned_start_hour: null,
+          assigned_duration_mins: req.requested_duration_mins,
+          priority_score: req.priority_score,
+          status: 'deferred',
+          reason: 'Deferred — no segment assigned for this request'
+        });
+        deferredCount++;
+      }
+    }
+
+    await supabase.from('block_plan_horizon_items').insert(itemsToInsert);
+
+    // 7. Calculate Availability for CP-SAT run
+    const numSegments = uniqueSegments.length || 1;
+    const totalPossibleMinutes = HORIZON_MINS * numSegments;
+    const projected = totalPossibleMinutes > 0 ? 100 - (totalScheduledMins / totalPossibleMinutes) * 100 : 100;
+    const projectedAvailabilityPct = Math.max(0, Math.min(100, Math.round(projected * 100) / 100));
+
+    await supabase.from('block_plan_horizons').update({
+      projected_availability_pct: projectedAvailabilityPct,
+      summary_explanation: `${horizonType === 'weekly' ? 'Weekly' : 'Monthly'} block plan generated using CP-SAT solver: ${scheduledCount} scheduled, ${deferredCount} deferred. Projected track availability: ${projectedAvailabilityPct}%.`,
+      items_improved_by_local_search: 0
+    }).eq('id', horizonId);
+
+    console.log("✅ CP-SAT Solver Plan Generated Successfully!", { horizonId });
+    return { horizonId };
+
+  } catch (error) {
+    console.error("❌ CP-SAT solver failed or timed out. Falling back to greedy logic:", error);
+    return generateHorizonPlanGreedy(horizonType, startDate, corridorId);
+  }
+}
+
+export async function generateHorizonPlanGreedy(
   horizonType: 'weekly' | 'monthly',
   startDate: Date,
   corridorId?: number,
@@ -69,6 +265,7 @@ export async function generateHorizonPlan(
       status: 'draft',
       generated_at: new Date().toISOString(),
       corridor_id: corridorId ?? null,
+      solver_used: 'greedy' // <--- Explicitly tagged as fallback
     })
     .select('id')
     .single<{ id: string }>()
@@ -79,7 +276,7 @@ export async function generateHorizonPlan(
   }
 
   const horizonId = horizon.id
-  console.log('[optimizer] Created horizon', { horizonId, horizon_type: horizonType, corridor_id: corridorId ?? null })
+  console.log('[optimizer] Created horizon (Greedy)', { horizonId, horizon_type: horizonType, corridor_id: corridorId ?? null })
 
   let segmentIds: number[] | undefined
   if (corridorId != null) {
@@ -281,7 +478,6 @@ export async function generateHorizonPlan(
       }
       const capacityPct = (statData?.[0]?.capacity_pct ?? 20) as number
       capacityPctBySegment.set(segment, capacityPct)
-      console.log('[optimizer] Segment capacity', { segment, capacityPct })
     }
     const capPerSegment = (capacityPctBySegment.get(segment)! / 100) * horizonMinutes
     const committedMin = committedMinutesBySegment.get(segment) ?? 0
@@ -343,46 +539,6 @@ export async function generateHorizonPlan(
     }
   }
 
-  // --- Local search improvement pass ---
-  //
-  // What this is:
-  //   A bounded, single-pass local search that improves on the pure greedy
-  //   result by swapping. After the greedy allocation places items one at a
-  //   time, any request that could not be placed (deferred) is revisited.
-  //   For each deferred request — considered in priority order — we look at
-  //   lower-priority items already scheduled on the same segment. We tentatively
-  //   remove one such scheduled item ("displace"), check whether the freed
-  //   capacity allows the higher-priority deferred request to be placed, and
-  //   if so we commit the swap: the deferred request takes the freed slot and
-  //   the displaced item is returned to deferred status. If no suitable swap
-  //   exists, the tentatively removed item is restored and we move on.
-  //
-  // What this is NOT:
-  //   - Not a full metaheuristic. There is no simulated annealing, no
-  //     tabu search, no genetic algorithm, and no acceptance of
-  //     "worse" solutions to escape local optima.
-  //   - Not multi-iterate. We make exactly one pass over the deferred items.
-  //     An item displaced early in the pass is not revisited later to see
-  //     whether it could be re-placed in a different slot.
-  //   - Not a mathematical solver. This does not use OR-Tools, MILP, or any
-  //     branch-and-bound / integer-programming technique. There is NO
-  //     guarantee of global optimality. The result is a locally improved
-  //     feasible schedule, not necessarily the best feasible schedule.
-  //
-  // Why this design:
-  //   This is a planning tool used interactively by railway control officers
-  //   who must understand — and be able to explain under questioning — every
-  //   decision the system makes. A single bounded pass with a simple
-  //   "higher-priority request displaces a lower-priority one" rule is
-  //   transparent: any officer, reviewer, or judge can read the code and the
-  //   per-item `reason` field and trace exactly why a given request was
-  //   placed or deferred. That explainability is a deliberate, defensible
-  //   engineering trade-off: we accept an imperfect but understandable
-  //   result in exchange for deterministic, auditable decisions.
-  //
-  // After the greedy allocation, attempt to place deferred requests by
-  // displacing lower-priority scheduled items on the same segment.
-  // A single bounded pass over deferred items — no iteration loop.
   let itemsImproved = 0
 
   const requestSegmentById = new Map<string, number>()
@@ -437,13 +593,11 @@ export async function generateHorizonPlan(
       )
       if (slotIdx < 0) continue
 
-      // Tentatively remove the scheduled item.
       slots.splice(slotIdx, 1)
       const committedMinBefore = committedMinutesBySegment.get(segment) ?? 0
       committedMinutesBySegment.set(segment, committedMinBefore - schedDuration)
       totalCommittedMinutes -= schedDuration
 
-      // Capacity check after removal.
       const capPerSegment = (capacityPctBySegment.get(segment)! / 100) * horizonMinutes
       if (committedMinBefore - schedDuration + duration > capPerSegment) {
         slots.splice(slotIdx, 0, {
@@ -456,7 +610,6 @@ export async function generateHorizonPlan(
         continue
       }
 
-      // Try to place the deferred request in the freed space.
       const reqStart = requestStartById.get(deferredItem.block_request_id) ?? null
       const newSlot = findSlotFor(segment, duration, reqStart)
 
@@ -492,7 +645,6 @@ export async function generateHorizonPlan(
         deferred--
         break
       } else {
-        // No slot found; restore the scheduled item.
         slots.splice(slotIdx, 0, {
           date: schedDate,
           start_hour: schedHour,
@@ -503,21 +655,6 @@ export async function generateHorizonPlan(
       }
     }
   }
-
-  console.log('[optimizer] Local search improvement pass complete', {
-    horizonId,
-    itemsImproved,
-    scheduled,
-    deferred,
-    totalCommittedMinutes,
-  })
-
-  console.log('[optimizer] Assigned horizon slots', {
-    horizonId,
-    scheduled,
-    deferred,
-    totalCommittedMinutes,
-  })
 
   const { error: insertErr } = await supabase
     .from('block_plan_horizon_items')
@@ -555,195 +692,189 @@ export async function generateHorizonPlan(
     throw new Error(updateErr?.message ?? 'Failed to update block_plan_horizons')
   }
 
-  console.log('[optimizer] Completed horizon plan', {
-    horizonId,
-    projectedAvailabilityPct,
-    itemsImproved,
-  })
-
   return { horizonId }
 }
 
 type HorizonSummaryRow = {
-  id: string
-  horizon_type: 'weekly' | 'monthly'
-  horizon_start: string
-  horizon_end: string
-  projected_availability_pct: number | null
-  summary_explanation: string | null
-  items_improved_by_local_search: number | null
+  id: string
+  horizon_type: 'weekly' | 'monthly'
+  horizon_start: string
+  horizon_end: string
+  projected_availability_pct: number | null
+  summary_explanation: string | null
+  items_improved_by_local_search: number | null
 }
 
 type HorizonItemSummaryRow = {
-  block_request_id: string
-  assigned_date: string | null
-  assigned_start_hour: number | null
-  assigned_duration_mins: number
-  priority_score: number | null
-  status: 'scheduled' | 'deferred'
-  reason: string | null
+  block_request_id: string
+  assigned_date: string | null
+  assigned_start_hour: number | null
+  assigned_duration_mins: number
+  priority_score: number | null
+  status: 'scheduled' | 'deferred'
+  reason: string | null
 }
 
 type RequestSnippetRow = {
-  id: string
-  work_description: string | null
-  department: string | null
+  id: string
+  work_description: string | null
+  department: string | null
 }
 
 function deterministicSummary(
-  horizon: HorizonSummaryRow,
-  scheduled: number,
-  deferred: number,
-  total: number,
-  availability: number | null,
-  deptBreakdown: Record<string, { scheduled: number; deferred: number }>,
-  deferredReasons: string[],
+  horizon: HorizonSummaryRow,
+  scheduled: number,
+  deferred: number,
+  total: number,
+  availability: number | null,
+  deptBreakdown: Record<string, { scheduled: number; deferred: number }>,
+  deferredReasons: string[],
 ): string {
-  const period = horizon.horizon_type === 'weekly' ? 'week' : 'month'
-  const start = horizon.horizon_start.slice(0, 10)
-  const end = horizon.horizon_end.slice(0, 10)
-  const deptParts = DEPARTMENTS.map((d) => {
-    const b = deptBreakdown[d] ?? { scheduled: 0, deferred: 0 }
-    return `${d}: ${b.scheduled} scheduled / ${b.deferred} deferred`
-  }).join('; ')
-  const extraParts: string[] = []
-  if (deptBreakdown['Unassigned']) {
-    const b = deptBreakdown['Unassigned']
-    extraParts.push(`Unassigned: ${b.scheduled} scheduled / ${b.deferred} deferred`)
-  }
-  const deptText = [deptParts, ...extraParts].join('; ')
-  const reasonText = deferredReasons.length
-    ? ` Reasons: ${deferredReasons.join('; ')}.`
-    : ''
-  const improvementNote = (horizon.items_improved_by_local_search ?? 0) > 0
-    ? ` ${horizon.items_improved_by_local_search} deferred request(s) were successfully scheduled via a local-search displacement pass.`
-    : ''
-  return `For the upcoming ${period} (${start} to ${end}), ${scheduled} of ${total} maintenance requests are scheduled and ${deferred} are deferred.${reasonText}${improvementNote} Department breakdown — ${deptText}. Projected track availability is ${availability ?? 0}%.`
+  const period = horizon.horizon_type === 'weekly' ? 'week' : 'month'
+  const start = horizon.horizon_start.slice(0, 10)
+  const end = horizon.horizon_end.slice(0, 10)
+  const deptParts = DEPARTMENTS.map((d) => {
+    const b = deptBreakdown[d] ?? { scheduled: 0, deferred: 0 }
+    return `${d}: ${b.scheduled} scheduled / ${b.deferred} deferred`
+  }).join('; ')
+  const extraParts: string[] = []
+  if (deptBreakdown['Unassigned']) {
+    const b = deptBreakdown['Unassigned']
+    extraParts.push(`Unassigned: ${b.scheduled} scheduled / ${b.deferred} deferred`)
+  }
+  const deptText = [deptParts, ...extraParts].join('; ')
+  const reasonText = deferredReasons.length
+    ? ` Reasons: ${deferredReasons.join('; ')}.`
+    : ''
+  const improvementNote = (horizon.items_improved_by_local_search ?? 0) > 0
+    ? ` ${horizon.items_improved_by_local_search} deferred request(s) were successfully scheduled via a local-search displacement pass.`
+    : ''
+  return `For the upcoming ${period} (${start} to ${end}), ${scheduled} of ${total} maintenance requests are scheduled and ${deferred} are deferred.${reasonText}${improvementNote} Department breakdown — ${deptText}. Projected track availability is ${availability ?? 0}%.`
 }
 
 export async function generateHorizonSummary(horizonId: string): Promise<void> {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
 
-  const { data: horizon, error: horizonErr } = await supabase
-    .from('block_plan_horizons')
-    .select('horizon_type, horizon_start, horizon_end, projected_availability_pct, items_improved_by_local_search')
-    .eq('id', horizonId)
-    .single<HorizonSummaryRow>()
+  const { data: horizon, error: horizonErr } = await supabase
+    .from('block_plan_horizons')
+    .select('horizon_type, horizon_start, horizon_end, projected_availability_pct, items_improved_by_local_search')
+    .eq('id', horizonId)
+    .single<HorizonSummaryRow>()
 
-  if (horizonErr || !horizon) {
-    console.error('[optimizer] horizon not found for summary:', horizonErr?.message)
-    throw new Error(horizonErr?.message ?? `Horizon ${horizonId} not found`)
-  }
+  if (horizonErr || !horizon) {
+    console.error('[optimizer] horizon not found for summary:', horizonErr?.message)
+    throw new Error(horizonErr?.message ?? `Horizon ${horizonId} not found`)
+  }
 
-  const { data: itemData, error: itemsErr } = await supabase
-    .from('block_plan_horizon_items')
-    .select('block_request_id, assigned_date, assigned_start_hour, assigned_duration_mins, priority_score, status, reason')
-    .eq('horizon_id', horizonId)
+  const { data: itemData, error: itemsErr } = await supabase
+    .from('block_plan_horizon_items')
+    .select('block_request_id, assigned_date, assigned_start_hour, assigned_duration_mins, priority_score, status, reason')
+    .eq('horizon_id', horizonId)
 
-  if (itemsErr) {
-    console.error('[optimizer] failed to fetch horizon items:', itemsErr.message)
-    throw new Error(itemsErr.message ?? 'Failed to fetch horizon items')
-  }
+  if (itemsErr) {
+    console.error('[optimizer] failed to fetch horizon items:', itemsErr.message)
+    throw new Error(itemsErr.message ?? 'Failed to fetch horizon items')
+  }
 
-  const items = (itemData ?? []) as HorizonItemSummaryRow[]
+  const items = (itemData ?? []) as HorizonItemSummaryRow[]
 
-  const requestsById = new Map<string, RequestSnippetRow>()
-  const reqIds = [...new Set(items.map((it) => it.block_request_id).filter(Boolean))]
-  if (reqIds.length > 0) {
-    const { data: reqData, error: reqErr } = await supabase
-      .from('block_requests')
-      .select('id, work_description, department')
-      .in('id', reqIds)
-    if (reqErr) {
-      console.warn('[optimizer] failed to fetch joined requests (continuing):', reqErr.message)
-    } else {
-      for (const r of (reqData ?? []) as RequestSnippetRow[]) {
-        requestsById.set(r.id, r)
-      }
-    }
-  }
+  const requestsById = new Map<string, RequestSnippetRow>()
+  const reqIds = [...new Set(items.map((it) => it.block_request_id).filter(Boolean))]
+  if (reqIds.length > 0) {
+    const { data: reqData, error: reqErr } = await supabase
+      .from('block_requests')
+      .select('id, work_description, department')
+      .in('id', reqIds)
+    if (reqErr) {
+      console.warn('[optimizer] failed to fetch joined requests (continuing):', reqErr.message)
+    } else {
+      for (const r of (reqData ?? []) as RequestSnippetRow[]) {
+        requestsById.set(r.id, r)
+      }
+    }
+  }
 
-  const scheduledItems = items.filter((it) => it.status === 'scheduled')
-  const deferredItems = items.filter((it) => it.status === 'deferred')
-  const availability = horizon.projected_availability_pct
+  const scheduledItems = items.filter((it) => it.status === 'scheduled')
+  const deferredItems = items.filter((it) => it.status === 'deferred')
+  const availability = horizon.projected_availability_pct
 
-  const deptBreakdown: Record<string, { scheduled: number; deferred: number }> = {}
-  for (const it of items) {
-    const dept = requestsById.get(it.block_request_id)?.department ?? 'Unassigned'
-    const bucket = deptBreakdown[dept] ?? { scheduled: 0, deferred: 0 }
-    bucket[it.status === 'scheduled' ? 'scheduled' : 'deferred'] += 1
-    deptBreakdown[dept] = bucket
-  }
+  const deptBreakdown: Record<string, { scheduled: number; deferred: number }> = {}
+  for (const it of items) {
+    const dept = requestsById.get(it.block_request_id)?.department ?? 'Unassigned'
+    const bucket = deptBreakdown[dept] ?? { scheduled: 0, deferred: 0 }
+    bucket[it.status === 'scheduled' ? 'scheduled' : 'deferred'] += 1
+    deptBreakdown[dept] = bucket
+  }
 
-  const deferredReasons = [...new Set(deferredItems.map((it) => it.reason).filter((r): r is string => Boolean(r)))]
+  const deferredReasons = [...new Set(deferredItems.map((it) => it.reason).filter((r): r is string => Boolean(r)))]
 
-  const detSummary = deterministicSummary(
-    horizon,
-    scheduledItems.length,
-    deferredItems.length,
-    items.length,
-    availability,
-    deptBreakdown,
-    deferredReasons,
-  )
+  const detSummary = deterministicSummary(
+    horizon,
+    scheduledItems.length,
+    deferredItems.length,
+    items.length,
+    availability,
+    deptBreakdown,
+    deferredReasons,
+  )
 
-  const hasLlm = Boolean(process.env.OPENROUTER_API_KEY)
-  const period = horizon.horizon_type === 'weekly' ? 'week' : 'month'
+  const hasLlm = Boolean(process.env.OPENROUTER_API_KEY)
+  const period = horizon.horizon_type === 'weekly' ? 'week' : 'month'
 
-  let summaryExplanation: string = detSummary
+  let summaryExplanation: string = detSummary
 
-  if (hasLlm) {
-    try {
-      const system =
-        'You are a briefing assistant for railway control officers. You summarize capacity-planning results in plain, conversational English.'
-      const scheduledSamples = scheduledItems
-        .slice(0, 5)
-        .map((it) => {
-          const desc = requestsById.get(it.block_request_id)?.work_description ?? 'n/a'
-          return `"${desc}" (priority ${it.priority_score ?? 'n/a'}, starts ${it.assigned_start_hour ?? 'n/a'})`
-        })
-        .join(', ')
-      const deptCounts = DEPARTMENTS.map((d) => {
-        const b = deptBreakdown[d] ?? { scheduled: 0, deferred: 0 }
-        return `${d}: ${b.scheduled}/${b.deferred}`
-      }).join(', ')
+  if (hasLlm) {
+    try {
+      const system =
+        'You are a briefing assistant for railway control officers. You summarize capacity-planning results in plain, conversational English.'
+      const scheduledSamples = scheduledItems
+        .slice(0, 5)
+        .map((it) => {
+          const desc = requestsById.get(it.block_request_id)?.work_description ?? 'n/a'
+          return `"${desc}" (priority ${it.priority_score ?? 'n/a'}, starts ${it.assigned_start_hour ?? 'n/a'})`
+        })
+        .join(', ')
+      const deptCounts = DEPARTMENTS.map((d) => {
+        const b = deptBreakdown[d] ?? { scheduled: 0, deferred: 0 }
+        return `${d}: ${b.scheduled}/${b.deferred}`
+      }).join(', ')
 
-      const user = [
-        `Summarize this railway block-work plan for a control officer reviewing the whole ${period} at once, in exactly 3-4 sentences.`,
-        `Horizon: ${horizon.horizon_start.slice(0, 10)} to ${horizon.horizon_end.slice(0, 10)} (${horizon.horizon_type}).`,
-        `Requests scheduled: ${scheduledItems.length}; deferred: ${deferredItems.length}.`,
-        `Deferred reasons: ${deferredReasons.join('; ') || 'n/a'}.`,
-        `Projected track availability: ${availability ?? 0}%.`,
-        `Department breakdown (scheduled/deferred): ${deptCounts}.`,
-        `Scheduled request samples: ${scheduledSamples || 'none'}.`,
-        'Keep it plain English, no markdown, no bullet points.',
-      ].join(' ')
+      const user = [
+        `Summarize this railway block-work plan for a control officer reviewing the whole ${period} at once, in exactly 3-4 sentences.`,
+        `Horizon: ${horizon.horizon_start.slice(0, 10)} to ${horizon.horizon_end.slice(0, 10)} (${horizon.horizon_type}).`,
+        `Requests scheduled: ${scheduledItems.length}; deferred: ${deferredItems.length}.`,
+        `Deferred reasons: ${deferredReasons.join('; ') || 'n/a'}.`,
+        `Projected track availability: ${availability ?? 0}%.`,
+        `Department breakdown (scheduled/deferred): ${deptCounts}.`,
+        `Scheduled request samples: ${scheduledSamples || 'none'}.`,
+        'Keep it plain English, no markdown, no bullet points.',
+      ].join(' ')
 
-      const txt = await Promise.race<string>([
-        openRouterChat(system, user),
-        new Promise<string>((_, rej) =>
-          setTimeout(() => rej(new Error('llm timeout')), LLM_TIMEOUT_MS),
-        ),
-      ])
-      summaryExplanation = txt?.trim() ? txt : detSummary
-    } catch (e) {
-      console.warn('[optimizer] OpenRouter summary failed, using deterministic fallback:', e)
-      summaryExplanation = detSummary
-    }
-  }
+      const txt = await Promise.race<string>([
+        openRouterChat(system, user),
+        new Promise<string>((_, rej) =>
+          setTimeout(() => rej(new Error('llm timeout')), LLM_TIMEOUT_MS),
+        ),
+      ])
+      summaryExplanation = txt?.trim() ? txt : detSummary
+    } catch (e) {
+      console.warn('[optimizer] OpenRouter summary failed, using deterministic fallback:', e)
+      summaryExplanation = detSummary
+    }
+  }
 
-  const { error: updateErr } = await supabase
-    .from('block_plan_horizons')
-    .update({ summary_explanation: summaryExplanation })
-    .eq('id', horizonId)
+  const { error: updateErr } = await supabase
+    .from('block_plan_horizons')
+    .update({ summary_explanation: summaryExplanation })
+    .eq('id', horizonId)
 
-  if (updateErr) {
-    console.error('[optimizer] failed to write horizon summary:', updateErr.message)
-    throw new Error(updateErr.message ?? 'Failed to write summary_explanation')
-  }
+  if (updateErr) {
+    console.error('[optimizer] failed to write horizon summary:', updateErr.message)
+    throw new Error(updateErr.message ?? 'Failed to write summary_explanation')
+  }
 
-  console.log('[optimizer] Wrote horizon summary', { horizonId, length: summaryExplanation.length })
+  console.log('[optimizer] Wrote horizon summary', { horizonId, length: summaryExplanation.length })
 }
