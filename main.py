@@ -11,9 +11,11 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from solver import solve_horizon
 
 NUMERIC = [
     "requested_start_hour",
@@ -95,3 +97,32 @@ def predict_priority(req: PriorityRequest):
     X = encode(req)
     score = float(np.clip(model.predict(X)[0], 0, 100))
     return {"priority_score": round(score, 2), "delay_risk": delay_risk_for(score)}
+
+
+class HorizonRequest(BaseModel):
+    id: str
+    segment_id: int
+    duration_mins: int
+    priority_score: float
+    preferred_start_mins: int
+    avoids_peak_start_mins: list[int] | None = None
+
+
+class SolveHorizonRequest(BaseModel):
+    requests: list[HorizonRequest]
+    segment_capacity_mins: dict[int, int]
+    horizon_total_mins: int
+
+
+@app.post("/solve-horizon")
+def solve_horizon_endpoint(req: SolveHorizonRequest):
+    try:
+        requests = [r.model_dump() for r in req.requests]
+        segment_capacity = {int(k): int(v) for k, v in req.segment_capacity_mins.items()}
+        result = solve_horizon(requests, segment_capacity, req.horizon_total_mins)
+        return result
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"solve_horizon failed: {exc}",
+        )
