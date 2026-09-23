@@ -50,6 +50,7 @@ export async function generateHorizonPlan(
   startDate: Date,
   corridorId?: number
 ): Promise<{ horizonId: string }> {
+  let lastPayload: string | undefined;
   try {
     const HORIZON_MINS = horizonType === 'weekly' ? 10080 : 43200;
     const dayOffset = horizonType === 'weekly' ? 7 : 30;
@@ -130,13 +131,16 @@ export async function generateHorizonPlan(
       })
     };
 
-    console.log("[optimizer] Calling CP-SAT Solver API...");
+     console.log("[optimizer] Calling CP-SAT Solver API...");
     const ML_API_URL = process.env.ML_API_URL || 'https://YOUR-RENDER-URL.onrender.com';
-    const response = await fetch(`${ML_API_URL}/solve-horizon`, {
+    const solverUrl = `${ML_API_URL}/solve-horizon`;
+    lastPayload = JSON.stringify(apiPayload);
+    console.log("Attempting CP-SAT call to:", solverUrl);
+    const response = await fetch(solverUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(apiPayload),
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(45000)
     });
 
     if (!response.ok) {
@@ -237,7 +241,13 @@ export async function generateHorizonPlan(
     return { horizonId };
 
   } catch (error) {
-    console.error("❌ CP-SAT solver failed or timed out. Falling back to greedy logic:", error);
+    console.error(
+      "🔴 CP-SAT SOLVER CALL FAILED:",
+      error instanceof Error ? error.message : String(error),
+      error instanceof Error ? error.stack : undefined,
+      "Payload sent:",
+      lastPayload
+    );
     return generateHorizonPlanGreedy(horizonType, startDate, corridorId);
   }
 }
