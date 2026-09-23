@@ -545,13 +545,22 @@ export default function MaintenancePage() {
       return
     }
 
+    const workDescriptionFromDefect =
+      defect.work_description ?? defect.asset_description ?? ""
+    if (!workDescriptionFromDefect || workDescriptionFromDefect.trim() === "") {
+      toast.error(
+        "Cannot request a block: the defect has no work description. Please add a description first.",
+      )
+      return
+    }
+
     const supabase = createClient()
     const { data: blockReqData, error: blockReqError } = await supabase
       .from("block_requests")
       .insert({
         segment_id: defect.segment_id,
         work_type: "other",
-        work_description: defect.work_description ?? defect.asset_description ?? "",
+        work_description: workDescriptionFromDefect,
         justification:
           defect.justification ??
           `Defect: ${DEFECT_TYPE_LABELS[defect.defect_type] ?? defect.defect_type}, severity: ${defect.severity}, due ${defect.due_date}`,

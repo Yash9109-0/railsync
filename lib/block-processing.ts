@@ -38,7 +38,14 @@ export async function processBlockRequest(block_request_id: string) {
   }
 
   // 2. Analyze urgency via LLM
-  const { text_urgency_score } = await analyzeUrgency(req.work_description ?? '', req.justification ?? '')
+  let text_urgency_score: number
+  if (!req.work_description?.trim()) {
+    text_urgency_score = 50
+    console.log('[block-processing] work_description is blank; skipping LLM call, using neutral urgency score 50')
+  } else {
+    const { text_urgency_score: score } = await analyzeUrgency(req.work_description, req.justification ?? '')
+    text_urgency_score = score
+  }
   console.log('[block-processing] Urgency score:', text_urgency_score)
 
   // 3. segment_stats (default overrun 0.15, sample_count 0)
