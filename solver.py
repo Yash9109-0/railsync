@@ -106,8 +106,12 @@ def solve_horizon(requests, segment_capacity_mins, horizon_total_mins):
             model.Add(start <= hi).OnlyEnforceIf(in_range)
             indicators.append(in_range)
         if indicators:
+            # The off-peak bonus only counts for *scheduled* requests: an
+            # unscheduled request has no real start, so claiming the bonus off
+            # an unconstrained start variable would inflate the objective.
             off_sum = model.NewIntVar(0, len(indicators), f"offsum_{rid}")
-            model.Add(off_sum == cp_model.LinearExpr.Sum(indicators))
+            model.Add(off_sum == cp_model.LinearExpr.Sum(indicators)).OnlyEnforceIf(presence)
+            model.Add(off_sum == 0).OnlyEnforceIf(presence.Not())
             obj_terms.append(off_sum * _OFF_PEAK_BONUS)
 
         seg = segments.setdefault(segment_id, {"intervals": [], "presences": [], "durations": []})

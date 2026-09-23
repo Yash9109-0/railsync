@@ -1,0 +1,8 @@
+{
+  "requests": [
+    {"id": "r1", "segment_id": 1, "duration_mins": 90, "priority_score": 80, "preferred_start_mins": 100, "avoids_peak_start_mins": []},
+    {"id": "r2", "segment_id": 1, "duration_mins": 90, "priority_score": 60, "preferred_start_mins": 100, "avoids_peak_start_mins": []}
+  ],
+  "segment_capacity_mins": {"1": 120},
+  "horizon_total_mins": 10080
+}
