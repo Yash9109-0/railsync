@@ -105,7 +105,7 @@ export async function generateHorizonPlan(
       const capMap = new Map((statData || []).map(s => [s.segment_id, s.capacity_pct]));
       for (const segId of uniqueSegments) {
         const pct = capMap.get(segId) ?? 20;
-        segment_capacity_mins[segId] = (pct / 100) * HORIZON_MINS;
+        segment_capacity_mins[segId] = Math.round((pct / 100) * HORIZON_MINS);
       }
     }
 
