@@ -16,7 +16,7 @@ import {
   DialogDescription,
   DialogClose,
 } from "@/components/ui/dialog"
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
 import { ChevronDown, ChevronUp, CalendarDays, Calendar, HelpCircle } from "lucide-react"
@@ -493,7 +493,7 @@ export default function HorizonPlanningCalendar() {
 
     const weeks = h.horizon_type === "weekly" ? [buildWeekDays(start)] : buildMonthGrid(start)
 
-  const flat = weeks.flatMap((w) => w)
+    const flat = weeks.flatMap((w) => w)
   const itemsByDay = new Map<string, HorizonItemRow[]>()
   const unassigned: HorizonItemRow[] = []
 
@@ -531,152 +531,153 @@ export default function HorizonPlanningCalendar() {
   })
   unassigned.forEach((item) => allDayItems.push(item))
 
-  const getItemDelay = (itemId: string) => {
+const getItemDelay = (itemId: string) => {
     if (!isJustGenerated) return 0
     const index = allDayItems.findIndex((item) => item.id === itemId)
     if (index === -1) return 0
     return index * 60 // 60ms delay between each item (50-80ms range)
   }
 
-    if (h.horizon_type === "weekly") {
-      const days = weeks[0]
-      return (
-        <div className="overflow-x-auto">
-          <div className="grid grid-cols-7 gap-2">
-            {days.map((d) => (
-              <div
-                key={`h-${d.key}`}
-                className="flex flex-col items-center justify-center"
-              >
-                <span className="text-xs font-medium">{dayName(d.date)}</span>
-                <span className="text-xs text-muted-foreground">
-                  {d.date.getUTCDate()}
-                </span>
-              </div>
-            ))}
-            {days.map((d) => {
-              const dayItems = itemsByDay.get(d.key) ?? []
-              return (
-                <div
-                  key={`b-${d.key}`}
-                  className={cn(
-                    "min-h-36 border rounded-lg p-2 bg-card",
-                    dayItems.length === 0 && "bg-muted/20 opacity-60",
-                  )}
-                >
-                  {dayItems.length === 0 ? (
-                    <span className="text-xs text-muted-foreground/30">—</span>
-                  ) : (
-                    dayItems.map((item) => (
-                      <CalendarDayChip
-                        key={item.id}
-                        item={item}
-                        request={horizonRequests[item.block_request_id]}
-                        onSelect={() => setSelectedItemId(item.id)}
-                        animationDelay={getItemDelay(item.id)}
-                      />
-                    ))
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          <CalendarLegend />
-
-          {unassigned.length > 0 && (
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">
-                Deferred (unassigned date)
-              </p>
-              <div className="flex flex-col gap-2">
-                {unassigned.map((item) => (
-                  <CalendarDayChip
-                    key={item.id}
-                    item={item}
-                    request={horizonRequests[item.block_request_id]}
-                    onSelect={() => setSelectedItemId(item.id)}
-                    animationDelay={getItemDelay(item.id)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )
-    }
-
+  if (h.horizon_type === "weekly") {
+    const days = weeks[0]
     return (
-          <div className="overflow-x-auto">
-          <div className="grid grid-cols-7 gap-px bg-muted border rounded-lg overflow-hidden">
-            {DAY_NAMES_SHORT.map((d, i) => (
-              <div
-                key={`h-${i}`}
-                className="bg-muted/50 py-2 text-center text-xs font-medium"
-              >
-                {d}
-              </div>
-            ))}
-            {flat.map((d, i) => {
-              const dayItems = itemsByDay.get(d.key) ?? []
-              return (
-                <div
-                  key={`b-${i}`}
-                  className={cn(
-                    "relative bg-card min-h-24 p-1",
-                    !d.inMonth && "bg-muted/30 opacity-50",
-                    d.inMonth && dayItems.length === 0 && "bg-muted/5 opacity-60",
-                  )}
-                >
-                  {d.inMonth && (
-                    <span className={cn(
-                      "absolute top-1 left-1 text-sm",
-                      dayItems.length === 0 ? "text-muted-foreground/30" : "text-muted-foreground/60"
-                    )}>
-                      {d.date.getUTCDate()}
-                    </span>
-                  )}
-                  {d.inMonth && dayItems.length > 0 && (
-                    <div className="pt-6">
-                      {dayItems.map((item) => (
-                        <CalendarDayChip
-                          key={item.id}
-                          item={item}
-                          request={horizonRequests[item.block_request_id]}
-                          onSelect={() => setSelectedItemId(item.id)}
-                          animationDelay={getItemDelay(item.id)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          <CalendarLegend />
-
-          {unassigned.length > 0 && (
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">
-                Deferred (unassigned date)
-              </p>
-              <div className="flex flex-col gap-2">
-                {unassigned.map((item) => (
-                  <CalendarDayChip
-                    key={item.id}
-                    item={item}
-                    request={horizonRequests[item.block_request_id]}
-                    onSelect={() => setSelectedItemId(item.id)}
-                    animationDelay={getItemDelay(item.id)}
-                  />
-                ))}
-              </div>
+      <div className="overflow-x-auto">
+        <div className="grid grid-cols-7 gap-2">
+          {days.map((d) => (
+            <div
+              key={`h-${d.key}`}
+              className="flex flex-col items-center justify-center"
+            >
+              <span className="text-xs font-medium">{dayName(d.date)}</span>
+              <span className="text-xs text-muted-foreground">
+                {d.date.getUTCDate()}
+              </span>
             </div>
-          )}
+          ))}
+          {days.map((d) => {
+            const dayItems = itemsByDay.get(d.key) ?? []
+            return (
+              <div
+                key={`b-${d.key}`}
+                className={cn(
+                  "min-h-36 border rounded-lg p-2 bg-card",
+                  dayItems.length === 0 && "bg-muted/20 opacity-60",
+                )}
+              >
+                {dayItems.length === 0 ? (
+                  <span className="text-xs text-muted-foreground/30">—</span>
+                ) : (
+                  dayItems.map((item) => (
+                    <CalendarDayChip
+                      key={item.id}
+                      item={item}
+                      request={horizonRequests[item.block_request_id]}
+                      onSelect={() => setSelectedItemId(item.id)}
+                      animationDelay={getItemDelay(item.id)}
+                    />
+                  ))
+                )}
+              </div>
+            )
+          })}
         </div>
+
+        <CalendarLegend />
+
+        {unassigned.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              Deferred (unassigned date)
+            </p>
+            <div className="flex flex-col gap-2">
+              {unassigned.map((item) => (
+                <CalendarDayChip
+                  key={item.id}
+                  item={item}
+                  request={horizonRequests[item.block_request_id]}
+                  onSelect={() => setSelectedItemId(item.id)}
+                  animationDelay={getItemDelay(item.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     )
   }
+
+  // Monthly view
+  return (
+    <div className="overflow-x-auto">
+      <div className="grid grid-cols-7 gap-px bg-muted border rounded-lg overflow-hidden">
+        {DAY_NAMES_SHORT.map((d, i) => (
+          <div
+            key={`h-${i}`}
+            className="bg-muted/50 py-2 text-center text-xs font-medium"
+          >
+            {d}
+          </div>
+        ))}
+        {flat.map((d, i) => {
+          const dayItems = itemsByDay.get(d.key) ?? []
+          return (
+            <div
+              key={`b-${i}`}
+              className={cn(
+                "relative bg-card min-h-24 p-1",
+                !d.inMonth && "bg-muted/30 opacity-50",
+                d.inMonth && dayItems.length === 0 && "bg-muted/5 opacity-60",
+              )}
+            >
+              {d.inMonth && (
+                <span className={cn(
+                  "absolute top-1 left-1 text-sm",
+                  dayItems.length === 0 ? "text-muted-foreground/30" : "text-muted-foreground/60"
+                )}>
+                  {d.date.getUTCDate()}
+                </span>
+              )}
+              {d.inMonth && dayItems.length > 0 && (
+                <div className="pt-6">
+                  {dayItems.map((item) => (
+                    <CalendarDayChip
+                      key={item.id}
+                      item={item}
+                      request={horizonRequests[item.block_request_id]}
+                      onSelect={() => setSelectedItemId(item.id)}
+                      animationDelay={getItemDelay(item.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <CalendarLegend />
+
+      {unassigned.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-medium text-muted-foreground">
+            Deferred (unassigned date)
+          </p>
+          <div className="flex flex-col gap-2">
+            {unassigned.map((item) => (
+              <CalendarDayChip
+                key={item.id}
+                item={item}
+                request={horizonRequests[item.block_request_id]}
+                onSelect={() => setSelectedItemId(item.id)}
+                animationDelay={getItemDelay(item.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+)
+}
 
   const renderHorizonCard = (h: HorizonRow) => {
     const isExpanded = expandedHorizon === h.id
@@ -819,7 +820,8 @@ export default function HorizonPlanningCalendar() {
   }, [justGeneratedHorizonId])
 
   return (
-    <div className="space-y-6">
+    <TooltipProvider delayDuration={350}>
+      <div className="space-y-6">
       <Card>
         <CardContent>
           <div className="flex flex-col sm:flex-row sm:items-end gap-4">
@@ -900,5 +902,6 @@ export default function HorizonPlanningCalendar() {
         />
       )}
     </div>
+  </TooltipProvider>
   )
 }

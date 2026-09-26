@@ -30,6 +30,7 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
+  TooltipProvider,
 } from "@/components/ui"
 import { AsyncButton } from "@/components/ui/async-button"
 import { SuccessOverlay } from "@/components/ui"
@@ -827,8 +828,9 @@ export default function HorizonPlanReview() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+    <TooltipProvider delayDuration={350}>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Horizon Plan Review</h1>
           <p className="text-sm text-muted-foreground">
@@ -869,5 +871,6 @@ export default function HorizonPlanReview() {
         </div>
       )}
     </div>
+  </TooltipProvider>
   )
 }
