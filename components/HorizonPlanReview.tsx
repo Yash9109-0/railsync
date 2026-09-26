@@ -24,15 +24,22 @@ import {
   DialogTrigger,
   Separator,
   Skeleton,
+  ErrorState,
+  EmptyState as UiEmptyState,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
 } from "@/components/ui"
+import { AsyncButton } from "@/components/ui/async-button"
+import { SuccessOverlay } from "@/components/ui"
 import {
   CalendarClock,
   Check,
   ClipboardList,
-  Loader2,
   RefreshCw,
   CheckCircle,
   Clock,
+  HelpCircle,
   Sparkles,
   TrendingUp,
 } from "lucide-react"
@@ -155,9 +162,9 @@ function fmtDateRangeShort(start: string, end: string): string {
 
 function horizonTypeIcon(type: HorizonType) {
   return type === "weekly" ? (
-    <CalendarClock className="h-3.5 w-3.5" />
+    <CalendarClock className="h-4 w-4" />
   ) : (
-    <TrendingUp className="h-3.5 w-3.5" />
+    <TrendingUp className="h-4 w-4" />
   )
 }
 
@@ -169,29 +176,26 @@ function priorityTier(score: number | null): string | null {
   return "Low"
 }
 
-const HORIZON_TYPE_BADGE: Record<HorizonType, string> = {
-  weekly: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  monthly: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+const HORIZON_TYPE_BADGE: Record<HorizonType, "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
+  weekly: "default",
+  monthly: "success",
 }
 
-const ITEM_STATUS_BADGE: Record<HorizonItemStatus, string> = {
-  scheduled:
-    "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  deferred:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+const ITEM_STATUS_BADGE: Record<HorizonItemStatus, "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
+  scheduled: "default",
+  deferred: "warning",
 }
 
-function itemStatusBadge(status: string): { label: string; className: string } {
+function itemStatusBadge(status: string): { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" } {
   if (status === "scheduled" || status === "deferred") {
     return {
       label: cap(status),
-      className: ITEM_STATUS_BADGE[status as HorizonItemStatus],
+      variant: ITEM_STATUS_BADGE[status as HorizonItemStatus],
     }
   }
   return {
     label: cap(status),
-    className:
-      "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
+    variant: "secondary",
   }
 }
 
@@ -207,11 +211,12 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
 
   const [items, setItems] = useState<HorizonItemRow[]>([])
   const [loadingItems, setLoadingItems] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
+  const [itemsError, setItemsError] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
-
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false)
   const fetchItems = useCallback(async () => {
     setLoadingItems(true)
+    setItemsError(null)
     const { data, error } = await supabase
       .from("block_plan_horizon_items")
       .select(
@@ -222,6 +227,7 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
       .order("assigned_start_hour", { ascending: true, nullsFirst: false })
     if (error) {
       toast.error("Failed to load plan items", { description: error.message })
+      setItemsError(error.message)
       setItems([])
     } else {
       setItems((data as HorizonItemRow[]) ?? [])
@@ -296,59 +302,52 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
     return new Date(ms).toISOString()
   }
 
-  async function handleApprove() {
-    setConfirmOpen(false)
+  const handleApprove = async () => {
     if (scheduledCount === 0) {
       toast.info("Nothing scheduled to approve for this plan.")
       return
     }
-    setSubmitting(true)
-    try {
-      const { data: userData } = await supabase.auth.getUser()
-      const officerId = userData.user?.id ?? null
+    const { data: userData } = await supabase.auth.getUser()
+    const officerId = userData.user?.id ?? null
 
-      for (const item of scheduledItems) {
-        const requestedStart = requestedStartFor(item)
-        const duration = Number(item.assigned_duration_mins ?? 0)
+    for (const item of scheduledItems) {
+      const requestedStart = requestedStartFor(item)
+      const duration = Number(item.assigned_duration_mins ?? 0)
 
-        const { error: apprErr } = await supabase.from("approvals").insert({
-          block_request_id: item.block_request_id,
-          officer_id: officerId,
-          decision: "approved" as const,
-          modified_start: requestedStart,
-          modified_duration_mins: duration,
-          decided_at: new Date().toISOString(),
+      const { error: apprErr } = await supabase.from("approvals").insert({
+        block_request_id: item.block_request_id,
+        officer_id: officerId,
+        decision: "approved" as const,
+        modified_start: requestedStart,
+        modified_duration_mins: duration,
+        decided_at: new Date().toISOString(),
+      })
+      if (apprErr) throw apprErr
+
+      const { error: brErr } = await supabase
+        .from("block_requests")
+        .update({
+          status: "approved" as const,
+          requested_start: requestedStart,
+          requested_duration_mins: duration,
         })
-        if (apprErr) throw apprErr
-
-        const { error: brErr } = await supabase
-          .from("block_requests")
-          .update({
-            status: "approved" as const,
-            requested_start: requestedStart,
-            requested_duration_mins: duration,
-          })
-          .eq("id", item.block_request_id)
-        if (brErr) throw brErr
-      }
-
-      const { error: hErr } = await supabase
-        .from("block_plan_horizons")
-        .update({ status: "approved" as const })
-        .eq("id", horizon.id)
-      if (hErr) throw hErr
-
-      toast.success("Plan approved", {
-        description: `Approved ${scheduledCount} request${scheduledCount === 1 ? "" : "s"} and advanced the plan to approved status.`,
-      })
-      onApproved(horizon.id)
-    } catch (e) {
-      toast.error("Failed to approve plan", {
-        description: e instanceof Error ? e.message : "Unknown error",
-      })
-    } finally {
-      setSubmitting(false)
+        .eq("id", item.block_request_id)
+      if (brErr) throw brErr
     }
+
+    const { error: hErr } = await supabase
+      .from("block_plan_horizons")
+      .update({ status: "approved" as const })
+      .eq("id", horizon.id)
+    if (hErr) throw hErr
+
+    setShowSuccessAnimation(true)
+    await new Promise((r) => setTimeout(r, 1200))
+    toast.success("Plan approved", {
+      description: `Approved ${scheduledCount} request${scheduledCount === 1 ? "" : "s"} and advanced the plan to approved status.`,
+    })
+    setShowSuccessAnimation(false)
+    onApproved(horizon.id)
   }
 
   const statusBadge = itemStatusBadge(horizon.status ?? "")
@@ -360,12 +359,12 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
         <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Badge className={HORIZON_TYPE_BADGE[horizon.horizon_type]}>
+              <Badge variant={HORIZON_TYPE_BADGE[horizon.horizon_type]}>
                 {cap(horizon.horizon_type)}
               </Badge>
               <CalendarClock className="h-4 w-4 text-muted-foreground" />
               {fmtDateRange(horizon.horizon_start, horizon.horizon_end)}
-              <Badge className={statusBadge.className}>{statusBadge.label}</Badge>
+              <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
             </CardTitle>
             <CardDescription className="max-w-[65ch]">
               {horizon.summary_explanation ?? "No plan narrative available."}
@@ -377,24 +376,44 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
                 {scheduledCount} scheduled · {items.length - scheduledCount} deferred
               </span>
               <Separator orientation="vertical" className="h-3" />
-              <span>
-                Availability goal met:{" "}
-                {horizon.projected_availability_pct != null
-                  ? `${horizon.projected_availability_pct}%`
-                  : "—"}
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex items-center gap-1">
+                    Availability goal met:{" "}
+                    {horizon.projected_availability_pct != null
+                      ? `${Math.round(horizon.projected_availability_pct)}%`
+                      : "—"}
+                    <HelpCircle className="h-3 w-3" aria-hidden="true" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs">
+                  <p className="text-xs">
+                    Projected percentage of track time available for passenger trains after scheduling maintenance blocks. Higher is better.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
           <div className="mt-2 text-right sm:mt-0">
-            <div className="text-3xl font-bold tabular-nums">
-              {fmtPct(horizon.projected_availability_pct)}
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-3xl font-semibold tabular-nums flex items-baseline gap-1">
+                  {fmtPct(horizon.projected_availability_pct)}
+                  <HelpCircle className="h-5 w-5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" aria-hidden="true" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <p className="text-xs">
+                  Projected percentage of track time available for passenger trains after scheduling maintenance blocks. Higher is better.
+                </p>
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground">
               Projected availability
             </p>
           </div>
         <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge className={HORIZON_TYPE_BADGE[horizon.horizon_type]}>
               {horizonTypeIcon(horizon.horizon_type)}
               {cap(horizon.horizon_type)}
@@ -404,17 +423,26 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
               {fmtDateRangeShort(horizon.horizon_start, horizon.horizon_end)}
             </span>
           </div>
-          <CircularGauge
-            value={horizon.projected_availability_pct}
-            size={84}
-            strokeWidth={7}
-            label="Projected availability"
-            color={availColor}
-          />
+          <Tooltip>
+              <TooltipTrigger asChild>
+                <CircularGauge
+                  value={horizon.projected_availability_pct}
+                  size={84}
+                  strokeWidth={7}
+                  label="Projected availability"
+                  color={availColor}
+                />
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <p className="text-xs">
+                  Projected percentage of track time available for passenger trains after scheduling maintenance blocks. Higher is better.
+                </p>
+              </TooltipContent>
+            </Tooltip>
         </div>
 
         <div className="mt-3 flex items-start gap-2 rounded-lg border bg-muted/40 p-3">
-          <Sparkles className="mt-0.5 h-4 w-4 text-primary/70 shrink-0" />
+          <Sparkles className="mt-1 h-4 w-4 text-primary/70 shrink-0" />
           <p className="text-sm text-muted-foreground leading-relaxed">
             {horizon.summary_explanation ?? "No plan narrative available."}
           </p>
@@ -433,25 +461,33 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        {loadingItems ? (
-          <div className="space-y-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="space-y-2">
-                <Skeleton className="h-4 w-1/3" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-            ))}
-          </div>
-        ) : groups.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No items in this plan.
-          </p>
-        ) : (
+        <CardContent className="space-y-4">
+          {itemsError ? (
+            <ErrorState
+              onRetry={fetchItems}
+              message={itemsError}
+              className="border-none bg-transparent"
+            />
+          ) : loadingItems ? (
+            <div className="space-y-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ))}
+            </div>
+          ) : groups.length === 0 ? (
+            <UiEmptyState
+              icon={ClipboardList}
+              title="No items in this plan"
+              description="This plan does not contain any scheduled or deferred requests."
+            />
+          ) : (
           <div className="space-y-4">
             {groups.map((group) => (
               <div key={group.dateKey}>
-                <div className="sticky top-0 mb-1 rounded-md bg-muted/50 px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                <div className="sticky top-0 mb-1 rounded-md bg-muted/50 px-2 py-2 text-xs font-semibold text-muted-foreground">
                   {group.label} ·{" "}
                   {group.items.length} request
                   {group.items.length === 1 ? "" : "s"}
@@ -500,22 +536,46 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
                           </span>
                         </div>
                         <div className="sm:col-span-1">
-                          <span className="block text-xs text-muted-foreground">
-                            Priority
-                          </span>
-                          <span className="text-sm font-medium">
-                            {item.priority_score != null
-                              ? item.priority_score.toFixed(1)
-                              : "—"}
-                            {priority ? (
-                              <Badge variant="outline" className="ml-1">
-                                {priority}
-                              </Badge>
-                            ) : null}
-                          </span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex flex-col gap-1">
+                                <span className="block text-xs text-muted-foreground flex items-center gap-1">
+                                  Priority
+                                  <HelpCircle className="h-3 w-3" aria-hidden="true" />
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {item.priority_score != null
+                                    ? item.priority_score.toFixed(1)
+                                    : "—"}
+                                  {priority ? (
+                                    <Badge variant="outline" className="ml-1">
+                                      {priority}
+                                    </Badge>
+                                  ) : null}
+                                </span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs">
+                              <p className="text-xs">
+                                Calculated by our AI model from safety criticality, traffic density, and urgency detected in the work description.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
                         </div>
                         <div className="sm:col-span-2 flex flex-col items-end gap-1">
-                          <Badge className={badge.className}>{badge.label}</Badge>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant={badge.variant} className={cn("flex items-center gap-1")}>
+                                {badge.label}
+                                <HelpCircle className="h-3 w-3" aria-hidden="true" />
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs">
+                              <p className="text-xs">
+                                Scheduled: assigned a date and time. Deferred: could not fit within segment capacity during optimization.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
                           {item.reason && item.status === "deferred" ? (
                             <p className="max-w-xs break-words text-right text-xs text-muted-foreground">
                               {item.reason}
@@ -529,7 +589,7 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
               </div>
             ))}
           </div>
-        )}
+          )}
       </CardContent>
 
       <CardFooter className="flex justify-end gap-2 border-t px-6 py-4">
@@ -537,29 +597,11 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
           <DialogTrigger asChild>
             <Button
               className="bg-success text-success-foreground hover:bg-success/90"
-              disabled={submitting || scheduledCount === 0}
+              disabled={scheduledCount === 0}
             >
-              {submitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4" />
-              )}
+              <Check className="h-4 w-4" />
               <span className="ml-1">
-                {submitting ? "Approving…" : "Approve This Plan"}
-                {submitting ? (
-                  "Approving…"
-                ) : (
-                  <span className="inline-flex items-center">
-                    Approve{" "}
-                    <Badge
-                      variant="secondary"
-                      className="mx-0.5 min-w-[1.25rem] justify-center font-mono"
-                    >
-                      {scheduledCount}
-                    </Badge>{" "}
-                    Plan{scheduledCount === 1 ? "" : "s"}
-                  </span>
-                )}
+                Approve {scheduledCount} Plan{scheduledCount === 1 ? "" : "s"}
               </span>
             </Button>
           </DialogTrigger>
@@ -577,7 +619,7 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
               </DialogDescription>
             </DialogHeader>
               {scheduledCount > 0 ? (
-                <div className="mt-3 flex items-center gap-2.5 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
+                <div className="mt-3 flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-3 text-sm">
                   <CheckCircle className="h-4 w-4 text-success shrink-0" />
                   <span>
                     <span className="font-medium text-foreground">{scheduledCount}</span> scheduled across{" "}
@@ -590,40 +632,31 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
               <Button
                 variant="outline"
                 onClick={() => setConfirmOpen(false)}
-                disabled={submitting}
               >
                 Cancel
               </Button>
-              <Button
+              <AsyncButton
                 className="bg-success text-success-foreground hover:bg-success/90"
-                onClick={handleApprove}
-                disabled={submitting || scheduledCount === 0}
+                onClick={async () => {
+                  setConfirmOpen(false)
+                  await handleApprove()
+                }}
+                disabled={scheduledCount === 0}
+                errorMessage="Failed to approve plan"
+                icon={<Check className="h-4 w-4" />}
               >
-                {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Check className="h-4 w-4" />
-                )}
-                <span className="ml-1">
-                  {submitting ? "Approving…" : "Approve All"}
-                  {submitting ? (
-                    "Approving…"
-                  ) : (
-                    <span className="inline-flex items-center">
-                      Approve All{" "}
-                      <Badge
-                        variant="secondary"
-                        className="mx-0.5 min-w-[1.25rem] justify-center font-mono"
-                      >
-                        {scheduledCount}
-                      </Badge>
-                    </span>
-                  )}
-                </span>
-              </Button>
+                Approve All
+              </AsyncButton>
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <SuccessOverlay
+          open={showSuccessAnimation}
+          onClose={() => setShowSuccessAnimation(false)}
+          message="Plan approved"
+        />
+
       </CardFooter>
     </Card>
   )
@@ -681,10 +714,12 @@ export default function HorizonPlanReview() {
 
   const [horizons, setHorizons] = useState<HorizonRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchHorizons = useCallback(async () => {
     setLoading(true)
+    setError(null)
 
     if (selectedCorridorId != null) {
       const { data: directData, error: directError } = await supabase
@@ -697,6 +732,7 @@ export default function HorizonPlanReview() {
       if (!directError) {
         setHorizons((directData as HorizonRow[]) ?? [])
       } else {
+        setError(directError.message)
         const { data: segmentData, error: segmentError } = await supabase
           .from("segments")
           .select("id")
@@ -706,6 +742,7 @@ export default function HorizonPlanReview() {
           toast.error("Failed to load corridor segments", {
             description: segmentError.message,
           })
+          setError(segmentError.message)
           setHorizons([])
         } else {
           const corridorSegmentIds = new Set(
@@ -727,6 +764,7 @@ export default function HorizonPlanReview() {
               toast.error("Failed to load horizon plans", {
                 description: fallbackError.message,
               })
+              setError(fallbackError.message)
               setHorizons([])
             } else {
               const filtered = (nestedData ?? [])
@@ -736,13 +774,14 @@ export default function HorizonPlanReview() {
                       const seg = item.block_requests?.segments
                       return (
                         seg?.corridor_id !== undefined &&
-                        corridorSegmentIds.has(seg.corridor_id as number)
+                        corridorSegmentIds.has(seg?.corridor_id as number)
                       )
                     },
                   ),
                 )
                 .map((horizon: any) => {
-                  const { block_plan_horizon_items, ...rest } = horizon
+                  const rest = { ...horizon }
+                  delete rest.block_plan_horizon_items
                   return rest as HorizonRow
                 })
 
@@ -762,6 +801,7 @@ export default function HorizonPlanReview() {
         toast.error("Failed to load horizon plans", {
           description: error.message,
         })
+        setError(error.message)
         setHorizons([])
       } else {
         setHorizons((data as HorizonRow[]) ?? [])
@@ -789,33 +829,30 @@ export default function HorizonPlanReview() {
     <div className="space-y-6">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Horizon Plan Review</h1>
+          <h1 className="text-2xl font-semibold">Horizon Plan Review</h1>
           <p className="text-sm text-muted-foreground">
             Draft block plan horizons awaiting approval. Each plan schedules
             scored block requests into weekly/monthly windows while avoiding
             goods-train peaks.
           </p>
         </div>
-        <Button
+        <AsyncButton
           variant="outline"
           size="sm"
           onClick={handleRefresh}
           disabled={refreshing || loading}
+          loadingText="Refreshing…"
+          successMessage="Horizon plans refreshed"
+          errorMessage="Failed to refresh horizon plans"
+          icon={<RefreshCw className="h-4 w-4" />}
         >
-          {refreshing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
           Refresh
-        </Button>
+        </AsyncButton>
       </div>
 
-      {loading ? (
-        <Skeleton className="h-8 w-40" />
-      ) : null}
-
-      {loading && horizons.length === 0 ? (
+      {error ? (
+        <ErrorState onRetry={fetchHorizons} message={error} />
+      ) : loading && horizons.length === 0 ? (
         <HorizonListSkeleton />
       ) : horizons.length === 0 ? (
         <EmptyState />

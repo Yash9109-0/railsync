@@ -1,0 +1,23 @@
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3111
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2.3s
+ ○ Compiling /login ...
+ ✓ Compiled /login in 5.1s (860 modules)
+ GET /login 200 in 5517ms
+ ✓ Compiled in 665ms (443 modules)
+ ✓ Compiled /middleware in 323ms (143 modules)
+ GET /login 200 in 54ms
+ ✓ Compiled in 1113ms (443 modules)
+ ✓ Compiled in 308ms (443 modules)
+ ✓ Compiled in 294ms (443 modules)
+ ✓ Compiled in 531ms (443 modules)
+ ✓ Compiled in 306ms (443 modules)
+ ✓ Compiled in 409ms (443 modules)
+ ✓ Compiled in 522ms (443 modules)
+ ✓ Compiled in 232ms (443 modules)
+ ✓ Compiled in 171ms (443 modules)
+ ✓ Compiled in 1295ms (443 modules)
+ ✓ Compiled in 173ms (443 modules)

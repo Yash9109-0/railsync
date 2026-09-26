@@ -13,8 +13,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { GlobeLock, MapPin } from "lucide-react";
+import { GlobeLock, MapPin, Clock } from "lucide-react";
 import type { Corridor } from "@/lib/types";
+
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
 
 interface DashboardTopBarProps {
   className?: string;
@@ -23,6 +35,7 @@ interface DashboardTopBarProps {
 export function DashboardTopBar({ className }: DashboardTopBarProps) {
   const [corridors, setCorridors] = useState<Corridor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const { selectedCorridorId, setSelectedCorridorId } = useCorridor();
 
   useEffect(() => {
@@ -48,13 +61,20 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
     void fetchCorridors();
   }, []);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
   const selectedName =
     corridors.find((c) => c.id === selectedCorridorId)?.name ?? null;
 
   return (
     <header
       className={cn(
-        "sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-background/90 backdrop-blur",
+        "sticky top-0 z-20 flex items-center justify-between gap-3 divider-gradient-primary bg-background/90 backdrop-blur",
         className,
       )}
     >
@@ -74,6 +94,13 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
             </div>
           </div>
 
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/30 border border-border/50">
+            <Clock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+            <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">
+              {formatDate(currentTime)} · {formatTime(currentTime)}
+            </span>
+          </div>
+
           <div className="flex items-center gap-3">
             {loading ? (
               <Skeleton className="h-8 w-52 rounded-lg" />
@@ -85,6 +112,7 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
                     value === "" ? null : Number(value),
                   )
                 }
+                data-tour="corridor-switcher"
               >
                 <SelectTrigger
                   size="default"

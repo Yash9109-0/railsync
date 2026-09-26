@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { EmptyState } from "@/components/ui/EmptyState"
 import {
   Table,
   TableBody,
@@ -37,7 +38,6 @@ import { useCorridor } from "@/context/CorridorContext"
 import {
   Bug,
   Calendar,
-  CheckCircle,
   ClipboardList,
   HelpCircle,
   History,
@@ -78,60 +78,20 @@ const SEVERITY_OPTIONS = [
   { value: "critical", label: "Critical" },
 ] as const
 
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  submitted: {
-    label: "Submitted",
-    className:
-      "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-  },
-  scored: {
-    label: "Scored",
-    className:
-      "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  },
-  approved: {
-    label: "Approved",
-    className:
-      "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  },
-  executed: {
-    label: "Executed",
-    className:
-      "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  },
-  rejected: {
-    label: "Rejected",
-    className:
-      "bg-red-100 text-red-900 dark:bg-red-900 dark:text-red-200",
-  },
-  safety_blocked: {
-    label: "Safety Blocked",
-    className:
-      "bg-red-100 text-red-900 dark:bg-red-900 dark:text-red-200",
-  },
+const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" }> = {
+  submitted: { label: "Submitted", variant: "secondary" },
+  scored: { label: "Scored", variant: "default" },
+  approved: { label: "Approved", variant: "success" },
+  executed: { label: "Executed", variant: "default" },
+  rejected: { label: "Rejected", variant: "destructive" },
+  safety_blocked: { label: "Safety Blocked", variant: "destructive" },
 }
 
-const DEFECT_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  open: {
-    label: "Open",
-    className:
-      "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-  },
-  block_requested: {
-    label: "Block Requested",
-    className:
-      "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  },
-  in_progress: {
-    label: "In Progress",
-    className:
-      "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  },
-  resolved: {
-    label: "Resolved",
-    className:
-      "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  },
+const DEFECT_STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" }> = {
+  open: { label: "Open", variant: "secondary" },
+  block_requested: { label: "Block Requested", variant: "default" },
+  in_progress: { label: "In Progress", variant: "warning" },
+  resolved: { label: "Resolved", variant: "success" },
 }
 
 const workTypeLabels: Record<string, string> = {
@@ -170,18 +130,18 @@ const SEVERITY_LABELS: Record<string, string> = {
   critical: "Critical",
 }
 
-const SEVERITY_BADGE: Record<string, string> = {
-  low: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  high: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-  critical: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+const SEVERITY_BADGE: Record<string, "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
+  low: "success",
+  medium: "warning",
+  high: "warning",
+  critical: "destructive",
 }
 
 const SEVERITY_BORDER: Record<string, string> = {
-  low: "border-l-4 border-l-gray-400 dark:border-l-gray-500",
-  medium: "border-l-4 border-l-amber-400 dark:border-l-amber-500",
-  high: "border-l-4 border-l-orange-400 dark:border-l-orange-500",
-  critical: "border-l-4 border-l-red-400 dark:border-l-red-500",
+  low: "border-l-4 border-success",
+  medium: "border-l-4 border-warning",
+  high: "border-l-4 border-warning",
+  critical: "border-l-4 border-destructive",
 }
 
 function severityToSafetyCriticality(severity: string): string {
@@ -236,24 +196,22 @@ function formatDateOnly(date: Date): string {
 
 function getStatusBadge(
   status: string,
-): { label: string; className: string } {
+): { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" } {
   return (
     STATUS_CONFIG[status] ?? {
       label: status.charAt(0).toUpperCase() + status.slice(1),
-      className:
-        "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
+      variant: "secondary",
     }
   )
 }
 
 function getDefectStatusBadge(
   status: string,
-): { label: string; className: string } {
+): { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" } {
   return (
     DEFECT_STATUS_CONFIG[status] ?? {
       label: status.charAt(0).toUpperCase() + status.slice(1),
-      className:
-        "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
+      variant: "secondary",
     }
   )
 }
@@ -738,26 +696,27 @@ export default function MaintenancePage() {
         icon={Wrench}
         title="Maintenance"
         description="Log defects and request track blocks for maintenance work. All requests are routed to AI scoring and approval."
+        userName={user?.email?.split("@")[0] || "User"}
       />
 
       <Tabs defaultValue="log" className="space-y-6">
         <TabsList>
-          <TabsTrigger value="log">
+          <TabsTrigger value="log" data-tour="combined-form-tab">
             <Plus className="h-4 w-4 mr-2" />
             Log Defect / Request
           </TabsTrigger>
-          <TabsTrigger value="register">
+          <TabsTrigger value="register" data-tour="defect-register-tab">
             <ClipboardList className="h-4 w-4 mr-2" />
             Defect Register
           </TabsTrigger>
-          <TabsTrigger value="requests">
+          <TabsTrigger value="requests" data-tour="my-requests-tab">
             <History className="h-4 w-4 mr-2" />
             My Requests
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="log" className="space-y-3">
-          <Card>
+          <Card data-tour="combined-form">
             <CardHeader>
               <CardTitle>Log Defect &amp; Request Block</CardTitle>
               <CardDescription>
@@ -1083,15 +1042,12 @@ export default function MaintenancePage() {
                   ))}
                 </div>
               ) : defects.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <CheckCircle className="h-12 w-12 text-green-500/50 mb-4" />
-                  <h3 className="text-lg font-medium">
-                    No defects logged yet — great work!
-                  </h3>
-                  <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-                    Log a defect using the form above and it will appear here.
-                  </p>
-                </div>
+                <EmptyState
+                  illustrationSrc="maintenance-all-clear.svg"
+                  illustrationAlt="All clear - no defects"
+                  context="no-requests"
+                  hasAnyData={false}
+                />
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {defects.map((defect) => {
@@ -1105,7 +1061,7 @@ export default function MaintenancePage() {
                         key={defect.id}
                         className={
                           SEVERITY_BORDER[defect.severity] ??
-                          "border-l-4 border-l-gray-400"
+                          "border-l-4 border-border-strong"
                         }
                       >
                         <CardHeader className="pb-2">
@@ -1131,15 +1087,12 @@ export default function MaintenancePage() {
                             </div>
                             <div className="flex flex-col items-end gap-1.5">
                               <Badge
-                                className={
-                                  SEVERITY_BADGE[defect.severity] ??
-                                  "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
-                                }
+                                variant={SEVERITY_BADGE[defect.severity] ?? "secondary"}
                               >
                                 {SEVERITY_LABELS[defect.severity] ??
                                   defect.severity}
                               </Badge>
-                              <Badge className={statusBadge.className}>
+                              <Badge variant={statusBadge.variant}>
                                 {statusBadge.label}
                               </Badge>
                             </div>
@@ -1152,7 +1105,7 @@ export default function MaintenancePage() {
                               <span
                                 className={cn(
                                   "font-medium",
-                                  overdue && "text-red-600",
+                                  overdue && "text-destructive",
                                 )}
                               >
                                 Due {formatDate(defect.due_date)}
@@ -1251,7 +1204,7 @@ export default function MaintenancePage() {
                         key={opt.id}
                         className={`rounded-lg border p-4 space-y-3 ${
                           opt.is_recommended
-                            ? "border-2 border-[#960DF2] bg-[#960DF2]/5"
+                            ? "border-2 border-primary bg-primary/5"
                             : ""
                         }`}
                       >
@@ -1260,7 +1213,7 @@ export default function MaintenancePage() {
                             {opt.option_label}
                           </span>
                           {opt.is_recommended && (
-                            <Badge className="bg-[#960DF2] hover:bg-[#960DF2] text-white text-xs">
+                            <Badge className="bg-primary hover:bg-primary/80 text-primary-foreground text-xs">
                               Recommended
                             </Badge>
                           )}
@@ -1270,7 +1223,7 @@ export default function MaintenancePage() {
                           {opt.adjusted_duration_mins ?? 0} min
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-lg font-bold text-primary">
+                          <span className="text-2xl font-bold tracking-tight font-heading tabular-nums text-primary">
                             {opt.priority_score != null
                               ? Math.round(opt.priority_score)
                               : "—"}
@@ -1324,14 +1277,12 @@ export default function MaintenancePage() {
                   ))}
                 </div>
               ) : requests.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <ClipboardList className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                  <h3 className="text-lg font-medium">No requests yet</h3>
-                  <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-                    Submit your first block request using the form above. Once
-                    submitted, it will appear here for tracking.
-                  </p>
-                </div>
+                <EmptyState
+                  illustrationSrc="maintenance-all-clear.svg"
+                  illustrationAlt="All clear - no requests"
+                  context="no-requests"
+                  hasAnyData={false}
+                />
               ) : (
                 <>
                   <div className="flex flex-col sm:flex-row gap-4 mb-4">
@@ -1363,9 +1314,11 @@ export default function MaintenancePage() {
                   </div>
 
                   {filteredRequests.length === 0 ? (
-                    <div className="text-center py-8 text-sm text-muted-foreground">
-                      No matching results
-                    </div>
+                    <EmptyState
+                      icon={Search}
+                      context="no-data"
+                      hasAnyData={requests.length > 0}
+                    />
                   ) : (
                     <Table>
                       <TableHeader>
@@ -1421,12 +1374,12 @@ export default function MaintenancePage() {
                               </TableCell>
                               <TableCell>
                                 {request.status === "submitted" ? (
-                                  <Badge className={`${badge.className} animate-pulse`}>
+                                  <Badge variant={badge.variant} className="animate-pulse">
                                     AI Processing...
                                   </Badge>
                                 ) : request.status === "scored" ? (
                                   <div className="flex items-center gap-2">
-                                    <Badge className={badge.className}>
+                                    <Badge variant={badge.variant}>
                                       {badge.label}
                                     </Badge>
                                     <span className="text-sm font-medium">
@@ -1436,13 +1389,13 @@ export default function MaintenancePage() {
                                     </span>
                                     <a
                                       href="/dashboard/ai"
-                                      className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                      className="text-xs font-medium text-primary hover:underline"
                                     >
                                       View AI Plan
                                     </a>
                                   </div>
                                 ) : (
-                                  <Badge className={badge.className}>
+                                  <Badge variant={badge.variant}>
                                     {badge.label}
                                   </Badge>
                                 )}

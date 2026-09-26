@@ -20,6 +20,7 @@ const NUM_SEGMENTS = STATIONS.length - 1;
 const MINUTES_PER_SEGMENT = 20;
 const TOTAL_MINUTES = NUM_SEGMENTS * MINUTES_PER_SEGMENT;
 const RECOMPUTE_MS = 5_000;
+const TRAIL_LENGTH = 0.15;
 
 type TrackId = "up" | "down" | "loop";
 
@@ -143,10 +144,10 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between text-[15px] font-semibold">
+        <CardTitle className="flex items-center justify-between font-semibold">
           <span className="flex items-center gap-2">
             Live Corridor View
-            <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+            <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 dark:bg-green-400 opacity-75"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-green-400 dark:bg-green-400 animate-pulse"></span>
@@ -154,26 +155,61 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
               Live
             </span>
           </span>
-          <span className="text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full border">
+          <span className="text-xs font-medium text-muted-foreground bg-muted px-3 py-1 rounded-full border">
             {trains.length > 0? `${trains.length} active train${trains.length === 1? "" : "s"}` : "No active trains"}
           </span>
         </CardTitle>
       </CardHeader>
 
       <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] font-medium text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground">
           {TRACKS.map((track) => (
             <span key={track.id}>{track.label}</span>
           ))}
         </div>
 
         <div className="relative w-full max-w-3xl mx-auto aspect-[3/1]">
-          <svg
-            className="absolute inset-0 h-full w-full"
-            viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-            role="img"
-            aria-label="Live corridor track map"
-          >
+<svg
+             className="absolute inset-0 h-full w-full"
+             viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+             role="img"
+             aria-label="Live corridor track map"
+           >
+             <defs>
+               <pattern id="gridPattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+                 <line x1="0" y1="0" x2="40" y2="0" stroke="currentColor" strokeWidth="0.5" opacity="0.06" />
+                 <line x1="0" y1="0" x2="0" y2="40" stroke="currentColor" strokeWidth="0.5" opacity="0.06" />
+               </pattern>
+               <linearGradient id="ambientGradient" x1="0" y1="0" x2="1" y2="1">
+                 <stop offset="0%" stopColor="hsl(var(--primary) / 0.04)" />
+                 <stop offset="50%" stopColor="hsl(var(--primary) / 0.01)" />
+                 <stop offset="100%" stopColor="hsl(var(--primary) / 0.04)" />
+               </linearGradient>
+               <radialGradient id="vignetteGradient" cx="50%" cy="50%" r="70%">
+                 <stop offset="0%" stopColor="hsl(var(--surface-1) / 0)" />
+                 <stop offset="70%" stopColor="hsl(var(--surface-1) / 0)" />
+                 <stop offset="100%" stopColor="hsl(var(--surface-1) / 0.15)" />
+               </radialGradient>
+               {TRACKS.map((track) => (
+                 <linearGradient
+                   key={`trail-${track.id}`}
+                   id={`trailGradient-${track.id}`}
+                   x1="0%"
+                   y1="0%"
+                   x2="100%"
+                   y2="0%"
+                 >
+                   <stop offset="0%" stopColor="hsl(var(--primary) / 0)" />
+                   <stop offset="60%" stopColor="hsl(var(--primary) / 0.15)" />
+                   <stop offset="100%" stopColor="hsl(var(--primary) / 0.45)" />
+                 </linearGradient>
+               ))}
+             </defs>
+             {/* Ambient background layer */}
+             <rect x="0" y="0" width={VIEW_W} height={VIEW_H} fill="url(#ambientGradient)" />
+             <rect x={PADDING} y={TRACKS[0].y - 60} width={TRACK_LEN} height={TRACKS[TRACKS.length - 1].y - TRACKS[0].y + 80} fill="url(#gridPattern)" stroke="none" />
+             {/* Subtle vignette for control-room depth */}
+             <rect x="0" y="0" width={VIEW_W} height={VIEW_H} fill="url(#vignetteGradient)" pointerEvents="none" />
             {TRACKS.map((track) => (
               <g key={`lines-${track.id}`} strokeWidth={4} strokeLinecap="round" className="stroke-gray-300 dark:stroke-gray-600">
                 {Array.from({ length: NUM_SEGMENTS }).map((_, i) => (
@@ -199,7 +235,7 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
                       cx={midX}
                       cy={track.signalY}
                       r={5.5}
-                      className={isOccupied? "fill-red-500 animate-pulse drop-shadow-[0_0_6px_rgba(239,68,68,0.9)]" : "fill-green-400 dark:fill-green-400 drop-shadow-[0_0_6px_rgba(34,197,94,0.8)]"}
+                      className={isOccupied? "fill-red-500 animate-pulse glow-destructive" : "fill-green-400 glow-success"}
                     />
                   </g>
                 );
@@ -209,8 +245,8 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
             {TRACKS.map((track) =>
               STATIONS.map((_, i) => (
                 <g key={`station-${track.id}-${i}`}>
-                  <circle cx={stationX(i)} cy={track.y} r={20} className="fill-[#960DF2]/15" />
-                  <circle cx={stationX(i)} cy={track.y} r={STATION_R} className="fill-white stroke-[#960DF2] stroke-2 drop-shadow-[0_0_8px_rgba(150,13,255,0.25)] dark:fill-gray-900" />
+                  <circle cx={stationX(i)} cy={track.y} r={20} className="fill-primary/15" />
+                  <circle cx={stationX(i)} cy={track.y} r={STATION_R} className="fill-white stroke-primary stroke-2 dark:fill-gray-900" />
                 </g>
               ))
             )}
@@ -220,6 +256,27 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
                 {label}
               </text>
             ))}
+
+            {trains.map((t) => {
+              const track = TRACKS.find((tr) => tr.id === t.track);
+              if (!track) return null;
+              const x = stationX(t.segmentIndex) + t.progress * SEG_LEN;
+              const trailStartX = Math.max(stationX(t.segmentIndex), x - TRAIL_LENGTH * SEG_LEN);
+              const trailEndX = x;
+              return (
+                <line
+                  key={`trail-${t.train_number}`}
+                  x1={trailStartX}
+                  y1={track.y}
+                  x2={trailEndX}
+                  y2={track.y}
+                  stroke={`url(#trailGradient-${track.id})`}
+                  strokeWidth={6}
+                  strokeLinecap="round"
+                  opacity={0.8}
+                />
+              );
+            })}
           </svg>
 
           {trains.map((t) => {
@@ -229,25 +286,29 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
             return (
               <div key={t.train_number} className="pointer-events-none absolute z-20" style={{ left: `${(x / VIEW_W) * 100}%`, top: `${(y / VIEW_H) * 100}%`, transform: "translate(-50%, -140%)" }}>
                 <div className="flex flex-col items-center">
-                  <div className="flex items-center gap-1 bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded-md shadow-sm border text-[10px] font-semibold text-blue-700 dark:text-blue-300">
-                    <Train className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                  <div className="flex items-center gap-1 bg-surface-1 dark:bg-surface-2 px-2 py-1 rounded-md shadow-sm border text-xs font-semibold text-primary">
+                    <Train className="h-4 w-4 text-primary" />
                     {t.train_number}
                   </div>
-                  <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-t-[4px] border-l-transparent border-r-transparent border-t-white drop-shadow-sm"></div>
+                  <div className="w-0 h-0 border-x-4 border-t-4 border-x-transparent border-t-surface-1 dark:border-t-gray-800"></div>
                 </div>
               </div>
             );
           })}
 
-          {trains.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">No active trains on the corridor right now</div>
+          {timetable.length === 0 && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-4">
+              <div className="rounded-xl border bg-card/95 px-6 py-4 text-center text-sm font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                No active trains on the corridor right now
+              </div>
+            </div>
           )}
         </div>
 
         <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground pt-1">
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-green-400 dark:bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.8)]" />Signal Clear</span>
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_6px_rgba(239,68,68,0.8)]" />Signal Occupied</span>
-          <span className="flex items-center gap-1.5"><Train className="h-4 w-4 text-blue-600 dark:text-blue-400" />Train</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-success glow-success" />Signal Clear</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-destructive animate-pulse glow-destructive" />Signal Occupied</span>
+          <span className="flex items-center gap-2"><Train className="h-4 w-4 text-primary" />Train</span>
         </div>
       </CardContent>
     </Card>

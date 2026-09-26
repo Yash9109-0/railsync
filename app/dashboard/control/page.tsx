@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCorridor } from "@/context/CorridorContext";
@@ -31,14 +31,6 @@ import {
   TabsTrigger,
 } from "@/components/ui";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   BarChart,
   Bar,
   XAxis,
@@ -50,11 +42,13 @@ import {
   Label,
 } from "recharts";
 import {
+  Building2,
   Check,
   CheckCircle,
   Clock,
   Edit,
   Gauge,
+  Lightbulb,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -64,6 +58,9 @@ import {
   TrendingUp,
   AlertCircle,
   AlertTriangle,
+  Route,
+  Train,
+  FileText,
 } from "lucide-react";
 import LiveTrackMap from "@/components/LiveTrackMap";
 // import CorridorAvailability from "@/components/CorridorAvailability";
@@ -73,6 +70,7 @@ import type {
   BlockPlanOption,
   BlockRequestStatus,
   BlockRequestWorkType,
+  Department,
   SafetyCriticality,
   TimetableStatus,
 } from "@/lib/types";
@@ -105,6 +103,7 @@ interface BlockRequestRow {
   priority_score: number | null;
   delay_risk: string | null;
   ai_explanation: string | null;
+  department: Department | null;
   created_at: string;
   segments: SegmentName | null;
   block_plan_options: PlanOptionWithLabel[] | null;
@@ -142,16 +141,7 @@ interface VerifyLogRow {
 const POLL_INTERVAL_MS = 30_000;
 const MANUAL_BASELINE_MINS = 18;
 
-const CHART_TOOLTIP_STYLE: Record<string, string | number> = {
-  backgroundColor: "#ffffff",
-  color: "hsl(var(--card-foreground))",
-  border: "1px solid hsl(var(--border))",
-  borderRadius: "8px",
-  boxShadow:
-    "0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)",
-  padding: "8px 12px",
-  fontSize: "12px",
-};
+
 
 function statusVariant(
   status: TimetableStatus,
@@ -188,7 +178,7 @@ function fmtDateTimeLocal(iso: string) {
 }
 
 function fmtDuration(mins: number) {
-  if (!isFinite(mins) || mins <= 0) return "—";
+  if (!isFinite(mins) || mins <= 0) return "â€”";
   if (mins < 1) return `${Math.round(mins)} min`;
   const h = Math.floor(mins / 60);
   const m = Math.round(mins % 60);
@@ -196,7 +186,7 @@ function fmtDuration(mins: number) {
 }
 
 function humanizeMs(ms: number) {
-  if (!isFinite(ms) || ms <= 0) return "—";
+  if (!isFinite(ms) || ms <= 0) return "â€”";
   const secs = Math.round(ms / 1000);
   const m = Math.floor(secs / 60);
   const s = secs % 60;
@@ -204,7 +194,7 @@ function humanizeMs(ms: number) {
 }
 
 function priorityLabel(score: number | null) {
-  if (score === null) return "—";
+  if (score === null) return "â€”";
   if (score >= 8) return "High";
   if (score >= 5) return "Medium";
   return "Low";
@@ -285,15 +275,183 @@ interface StatCardProps {
 }
 
 function StatCard({ title, value, icon, desc }: StatCardProps) {
+  const numericValue = Number(value.replace(/[^0-9.-]/g, "")) || 0
+  const [displayValue, setDisplayValue] = useState(0)
+  const [hasAnimated, setHasAnimated] = useState(false)
+
+  useEffect(() => {
+    if (hasAnimated) {
+      setDisplayValue(numericValue)
+      return
+    }
+    const duration = 600
+    const startTime = performance.now()
+    const animate = (now: number) => {
+      const progress = Math.min((now - startTime) / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setDisplayValue(Math.round(numericValue * eased))
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      } else {
+        setHasAnimated(true)
+      }
+    }
+    requestAnimationFrame(animate)
+  }, [numericValue, hasAnimated])
+
+  const formattedValue = Number.isInteger(numericValue)
+    ? displayValue.toLocaleString()
+    : displayValue.toFixed(2)
+
   return (
-    <Card className="transition-shadow duration-200 hover:shadow-md">
+    <Card className="transition-shadow duration-200 hover:shadow-md bg-gradient-card">
       <CardContent className="py-5">
         <div className="flex items-center gap-3">
           {icon}
-          <span className="text-3xl font-bold">{value}</span>
+          <span className="text-3xl font-bold tabular-nums font-heading">{formattedValue}</span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{title}</p>
         {desc ? <p className="text-xs text-muted-foreground">{desc}</p> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface CorridorSnapshotProps {
+  selectedCorridorId: number | null;
+}
+
+function CorridorSnapshot({ selectedCorridorId }: CorridorSnapshotProps) {
+  const [activeSegments, setActiveSegments] = useState(0);
+  const [trainsToday, setTrainsToday] = useState(0);
+  const [pendingPlans, setPendingPlans] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      if (selectedCorridorId == null) {
+        if (!cancelled) {
+          setActiveSegments(0);
+          setTrainsToday(0);
+          setPendingPlans(0);
+          setLoading(false);
+        }
+        return;
+      }
+
+      const supabase = createClient();
+
+      try {
+        // 1. Active segments count for this corridor
+        const { count: segmentsCount } = await supabase
+          .from("segments")
+          .select("*", { count: "exact", head: true })
+          .eq("corridor_id", selectedCorridorId);
+        if (!cancelled) setActiveSegments(segmentsCount ?? 0);
+
+        // 2. Trains scheduled today for this corridor's segments
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const { data: segmentIds } = await supabase
+          .from("segments")
+          .select("id")
+          .eq("corridor_id", selectedCorridorId);
+        const corridorSegmentIds = (segmentIds ?? []).map((s) => s.id);
+
+        if (corridorSegmentIds.length > 0) {
+          const { count: trainsCount } = await supabase
+            .from("timetable")
+            .select("*", { count: "exact", head: true })
+            .in("segment_id", corridorSegmentIds)
+            .gte("scheduled_time", todayStart.toISOString())
+            .lte("scheduled_time", todayEnd.toISOString());
+          if (!cancelled) setTrainsToday(trainsCount ?? 0);
+        } else if (!cancelled) {
+          setTrainsToday(0);
+        }
+
+        // 3. Pending plans (scored block requests) for this corridor
+        if (corridorSegmentIds.length > 0) {
+          const { count: pendingCount } = await supabase
+            .from("block_requests")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "scored")
+            .in("segment_id", corridorSegmentIds);
+          if (!cancelled) setPendingPlans(pendingCount ?? 0);
+        } else if (!cancelled) {
+          setPendingPlans(0);
+        }
+      } catch {
+        if (!cancelled) {
+          setActiveSegments(0);
+          setTrainsToday(0);
+          setPendingPlans(0);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCorridorId]);
+
+  if (selectedCorridorId == null) {
+    return (
+      <Card className="bg-gradient-card border-dashed">
+        <CardContent className="py-3 px-4 text-center text-sm text-muted-foreground">
+          Select a corridor to see the snapshot.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const statItems = [
+    {
+      label: "Active Segments",
+      value: String(activeSegments),
+      icon: <Route className="h-4 w-4 text-primary" />,
+    },
+    {
+      label: "Trains Today",
+      value: String(trainsToday),
+      icon: <Train className="h-4 w-4 text-primary" />,
+    },
+    {
+      label: "Pending Plans",
+      value: String(pendingPlans),
+      icon: <FileText className="h-4 w-4 text-primary" />,
+    },
+  ];
+
+  return (
+    <Card className="bg-gradient-card">
+      <CardContent className="py-3">
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-2">
+          <span className="font-medium text-sm">Corridor Snapshot</span>
+          {loading && <Loader2 className="h-3 w-3 animate-spin" />}
+        </div>
+        <div className="grid grid-cols-3 gap-3 sm:gap-4">
+          {statItems.map((item, i) => (
+            <div
+              key={item.label}
+              className="flex items-center gap-2 p-2 rounded-lg bg-card border border-border/50 hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex-shrink-0">{item.icon}</div>
+              <div className="min-w-0">
+                <p className="text-xl font-bold tabular-nums font-heading leading-tight">{loading ? "—" : item.value}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{item.label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
@@ -321,6 +479,227 @@ interface ApprovedPlanRow {
 interface ChartSeries {
   key: string;
   saved: number;
+}
+
+const OVERVIEW_DEPARTMENTS: Department[] = ["TMS", "TDMS", "SMMS"];
+
+const DEPARTMENT_BAR_CLS: Record<Department, string> = {
+  TMS: "bg-primary",
+  TDMS: "bg-success",
+  SMMS: "bg-warning",
+};
+
+interface DepartmentOverviewProps {
+  counts: Record<Department, number>;
+  loading: boolean;
+}
+
+function DepartmentOverview({ counts, loading }: DepartmentOverviewProps) {
+  const total = OVERVIEW_DEPARTMENTS.reduce(
+    (sum, dept) => sum + counts[dept],
+    0,
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Building2 className="h-5 w-5 text-primary" />
+          Department Overview
+        </CardTitle>
+        <CardDescription>
+          Scored requests awaiting approval, grouped by owning department
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          OVERVIEW_DEPARTMENTS.map((dept) => (
+            <div key={dept} className="space-y-1">
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-2 w-full" />
+            </div>
+          ))
+        ) : total === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No scored requests for this corridor yet.
+          </p>
+        ) : (
+          OVERVIEW_DEPARTMENTS.map((dept) => {
+            const count = counts[dept];
+            const pct = Math.round((count / total) * 100);
+            return (
+              <div key={dept} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium">{dept}</span>
+                  <span className="text-muted-foreground">
+                    {count} {count === 1 ? "request" : "requests"}
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      DEPARTMENT_BAR_CLS[dept],
+                    )}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface InsightRequestRow {
+  status: BlockRequestStatus;
+  work_type: BlockRequestWorkType;
+  safety_criticality: SafetyCriticality;
+  created_at: string;
+  segments: SegmentName | null;
+}
+
+interface QuickInsight {
+  icon: "lightbulb" | "trending";
+  text: string;
+}
+
+// Statuses that mean a request is still awaiting action (AI scoring or
+// officer approval) rather than being closed out.
+const PENDING_INSIGHT_STATUSES: BlockRequestStatus[] = [
+  "submitted",
+  "pending",
+  "scored",
+];
+
+// Trailing window used for the "this week" safety-critical observation.
+const INSIGHT_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function computeQuickInsights(rows: InsightRequestRow[]): QuickInsight[] {
+  const insights: QuickInsight[] = [];
+
+  const pendingRows = rows.filter((r) =>
+    PENDING_INSIGHT_STATUSES.includes(r.status),
+  );
+
+  // Observation 1: which segment carries the most pending work.
+  if (pendingRows.length > 0) {
+    const bySegment = new Map<string, number>();
+    for (const row of pendingRows) {
+      const segmentName = row.segments?.name;
+      if (!segmentName) continue;
+      bySegment.set(segmentName, (bySegment.get(segmentName) ?? 0) + 1);
+    }
+    const topSegment = Array.from(bySegment.entries()).sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+    )[0];
+    if (topSegment) {
+      insights.push({
+        icon: "lightbulb",
+        text: `Segment ${topSegment[0]} has the most pending requests (${topSegment[1]} of ${pendingRows.length}).`,
+      });
+    }
+  } else {
+    insights.push({
+      icon: "lightbulb",
+      text: "No pending requests right now — the approval queue is clear.",
+    });
+  }
+
+  // Observation 2: safety-critical share of requests created this week
+  // (trailing 7 days).
+  const weekAgoMs = Date.now() - INSIGHT_WEEK_MS;
+  const weekRows = rows.filter((r) => {
+    const parsed = Date.parse(r.created_at);
+    return !Number.isNaN(parsed) && parsed >= weekAgoMs;
+  });
+  if (weekRows.length > 0) {
+    const criticalCount = weekRows.filter(
+      (r) => r.safety_criticality === "safety_critical",
+    ).length;
+    const pct = Math.round((criticalCount / weekRows.length) * 100);
+    insights.push({
+      icon: "trending",
+      text: `${pct}% of requests this week are safety-critical (${criticalCount} of ${weekRows.length}).`,
+    });
+  } else {
+    insights.push({
+      icon: "trending",
+      text: "No new block requests were created in the last 7 days.",
+    });
+  }
+
+  // Observation 3: which work type dominates the pending queue.
+  if (pendingRows.length > 0) {
+    const byWork = new Map<string, number>();
+    for (const row of pendingRows) {
+      const key = row.work_type ?? "other";
+      byWork.set(key, (byWork.get(key) ?? 0) + 1);
+    }
+    const topWork = Array.from(byWork.entries()).sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+    )[0];
+    if (topWork) {
+      const pct = Math.round((topWork[1] / pendingRows.length) * 100);
+      insights.push({
+        icon: "lightbulb",
+        text: `${workTypeLabel(topWork[0] as BlockRequestWorkType)} work accounts for ${pct}% of pending requests.`,
+      });
+    }
+  }
+
+  // 2-3 lines: the two always-present observations plus the work-type one.
+  return insights.slice(0, 3);
+}
+
+function QuickInsightsCard({
+  insights,
+  loading,
+}: {
+  insights: QuickInsight[];
+  loading: boolean;
+}) {
+  return (
+    <Card className="transition-shadow duration-200 hover:shadow-md bg-gradient-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Lightbulb className="h-5 w-5 text-primary" />
+          Quick Insights
+        </CardTitle>
+        <CardDescription>
+          Auto-generated observations from current block request data.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          <>
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-2/3" />
+          </>
+        ) : insights.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Not enough activity yet to generate insights.
+          </p>
+        ) : (
+          insights.map((insight) => (
+            <div key={insight.text} className="flex items-start gap-2.5 text-sm">
+              {insight.icon === "trending" ? (
+                <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              ) : (
+                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              )}
+              <span className="leading-snug text-muted-foreground">
+                {insight.text}
+              </span>
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function analyticsBaselineOption(
@@ -354,6 +733,7 @@ function TimeSavedAnalytics({
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [segmentSeries, setSegmentSeries] = useState<ChartSeries[]>([]);
   const [riskSeries, setRiskSeries] = useState<ChartSeries[]>([]);
+  const [quickInsights, setQuickInsights] = useState<QuickInsight[]>([]);
   const [loading, setLoading] = useState(true);
   const [corridorName, setCorridorName] = useState<string | null>(null);
 
@@ -413,6 +793,7 @@ function TimeSavedAnalytics({
         if (!cancelled) {
           setSegmentSeries([]);
           setRiskSeries([]);
+          setQuickInsights([]);
           setLoading(false);
         }
         return;
@@ -423,9 +804,31 @@ function TimeSavedAnalytics({
         if (!cancelled) {
           setSegmentSeries([]);
           setRiskSeries([]);
+          setQuickInsights([]);
           setLoading(false);
         }
         return;
+      }
+
+      // Quick Insights: pending + recently created requests, scoped to the
+      // corridor, used to auto-generate observation lines.
+      try {
+        let insightQuery = supabase
+          .from("block_requests")
+          .select("status, work_type, safety_criticality, created_at, segments(name)");
+        if (selectedCorridorId != null && corridorSegmentIds.length > 0) {
+          insightQuery = insightQuery.in("segment_id", corridorSegmentIds);
+        }
+        const { data: insightRows } = await insightQuery;
+        if (!cancelled) {
+          setQuickInsights(
+            computeQuickInsights(
+              (insightRows as InsightRequestRow[] | null) ?? [],
+            ),
+          );
+        }
+      } catch {
+        if (!cancelled) setQuickInsights([]);
       }
 
       let query = supabase
@@ -604,6 +1007,8 @@ function TimeSavedAnalytics({
         </div>
       )}
 
+      <QuickInsightsCard insights={quickInsights} loading={loading} />
+
       <Card>
         <CardHeader>
           <CardTitle>Time Saved by Segment</CardTitle>
@@ -631,14 +1036,14 @@ function TimeSavedAnalytics({
                       x2="0"
                       y2="1"
                     >
-                      <stop offset="0%" stopColor="#960DF2" />
-                      <stop offset="100%" stopColor="#C084FC" />
+                      <stop offset="0%" stopColor="hsl(var(--primary))" />
+                      <stop offset="100%" stopColor="hsl(var(--primary) / 0.7)" />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid
+<CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
-                    stroke="#e2e8f0"
+                    stroke="hsl(var(--border-subtle))"
                     strokeOpacity={0.6}
                   />
                   <XAxis
@@ -677,11 +1082,20 @@ function TimeSavedAnalytics({
                     </Label>
                   </YAxis>
                   <Tooltip
-                    cursor={{ fill: "rgba(150, 13, 242, 0.04)" }}
-                    contentStyle={CHART_TOOLTIP_STYLE}
-                    itemStyle={{ color: "#0f172a", fontWeight: 500 }}
+                    cursor={{ fill: "hsl(var(--primary) / 0.06)" }}
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      color: "hsl(var(--card-foreground))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      boxShadow:
+                        "0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                    }}
+                    itemStyle={{ color: "hsl(var(--card-foreground))", fontWeight: 500 }}
                     labelStyle={{
-                      color: "#64748b",
+                      color: "hsl(var(--muted-foreground))",
                       fontWeight: 600,
                       marginBottom: "2px",
                     }}
@@ -693,7 +1107,7 @@ function TimeSavedAnalytics({
                   <Bar
                     dataKey="saved"
                     name="Time saved (min)"
-                    fill="url(#timeSavedSegmentGradient)"
+                    fill="url(#chart-gradient-primary-vertical)"
                     radius={[6, 6, 0, 0]}
                     animationDuration={600}
                   >
@@ -733,22 +1147,10 @@ function TimeSavedAnalytics({
                   data={riskSeries}
                   margin={{ top: 12, right: 16, left: 60, bottom: 0 }}
                 >
-                  <defs>
-                    <linearGradient
-                      id="timeSavedRiskGradient"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="0%" stopColor="#960DF2" />
-                      <stop offset="100%" stopColor="#C084FC" />
-                    </linearGradient>
-                  </defs>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
-                    stroke="#e2e8f0"
+                    stroke="hsl(var(--border-subtle))"
                     strokeOpacity={0.6}
                   />
                   <XAxis
@@ -787,11 +1189,20 @@ function TimeSavedAnalytics({
                     </Label>
                   </YAxis>
                   <Tooltip
-                    cursor={{ fill: "rgba(150, 13, 242, 0.04)" }}
-                    contentStyle={CHART_TOOLTIP_STYLE}
-                    itemStyle={{ color: "#0f172a", fontWeight: 500 }}
+                    cursor={{ fill: "hsl(var(--primary) / 0.06)" }}
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      color: "hsl(var(--card-foreground))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      boxShadow:
+                        "0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                    }}
+                    itemStyle={{ color: "hsl(var(--card-foreground))", fontWeight: 500 }}
                     labelStyle={{
-                      color: "#64748b",
+                      color: "hsl(var(--muted-foreground))",
                       fontWeight: 600,
                       marginBottom: "2px",
                     }}
@@ -803,7 +1214,7 @@ function TimeSavedAnalytics({
                   <Bar
                     dataKey="saved"
                     name="Time saved (min)"
-                    fill="url(#timeSavedRiskGradient)"
+                    fill="url(#chart-gradient-primary-vertical)"
                     radius={[6, 6, 0, 0]}
                     animationDuration={600}
                   >
@@ -842,22 +1253,10 @@ function TimeSavedAnalytics({
                 data={chartData}
                 margin={{ top: 12, right: 16, left: 60, bottom: 0 }}
               >
-                <defs>
-                  <linearGradient
-                    id="approvalProcessingGradient"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop offset="0%" stopColor="#960DF2" />
-                    <stop offset="100%" stopColor="#C084FC" />
-                  </linearGradient>
-                </defs>
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
-                  stroke="#e2e8f0"
+                  stroke="hsl(var(--border-subtle))"
                   strokeOpacity={0.6}
                 />
                 <XAxis
@@ -892,23 +1291,32 @@ function TimeSavedAnalytics({
                   </Label>
                 </YAxis>
                 <Tooltip
-                  cursor={{ fill: "rgba(150, 13, 242, 0.04)" }}
-                  contentStyle={CHART_TOOLTIP_STYLE}
-                  itemStyle={{ color: "#0f172a", fontWeight: 500 }}
+                  cursor={{ fill: "hsl(var(--primary) / 0.06)" }}
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    color: "hsl(var(--card-foreground))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    boxShadow:
+                      "0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)",
+                    padding: "8px 12px",
+                    fontSize: "12px",
+                  }}
+                  itemStyle={{ color: "hsl(var(--card-foreground))", fontWeight: 500 }}
                   labelStyle={{
-                    color: "#64748b",
+                    color: "hsl(var(--muted-foreground))",
                     fontWeight: 600,
                     marginBottom: "2px",
                   }}
                   formatter={(v) => [
                     `${Number(v ?? 0).toFixed(1)} min`,
-                    "Processing time",
+                    "Time saved",
                   ]}
                 />
                 <Bar
                   dataKey="minutes"
                   name="Processing time (min)"
-                  fill="url(#approvalProcessingGradient)"
+                  fill="url(#chart-gradient-primary-vertical)"
                   radius={[6, 6, 0, 0]}
                   animationDuration={600}
                 >
@@ -1305,6 +1713,15 @@ if (pendingError) {
     setSubmitting(false);
   }
 
+  const departmentCounts: Record<Department, number> = {
+    TMS: 0,
+    TDMS: 0,
+    SMMS: 0,
+  };
+  for (const request of pending) {
+    if (request.department) departmentCounts[request.department] += 1;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -1329,6 +1746,10 @@ if (pendingError) {
         </Button>
       </div>
 
+      <DepartmentOverview counts={departmentCounts} loading={loadingPending} />
+
+      <CorridorSnapshot selectedCorridorId={selectedCorridorId} />
+
       <Tabs defaultValue="timetable" className="space-y-4">
         <TabsList className="flex flex-wrap gap-1">
           <TabsTrigger value="timetable">Timetable</TabsTrigger>
@@ -1342,14 +1763,14 @@ if (pendingError) {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold flex items-center gap-2">
               Live Timetable
-              <Badge variant="outline" className="gap-1.5 border-green-200 text-green-700 dark:border-green-900 dark:text-green-300">
-                <span className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full animate-pulse"></span> Live
+              <Badge variant="success" className="gap-1.5">
+                <span className="w-2 h-2 bg-success dark:bg-success/80 rounded-full animate-pulse"></span> Live
               </Badge>
             </h2>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 dark:bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500 dark:bg-green-400"></span>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/80 dark:bg-success/60 opacity-75"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-success dark:bg-success/80"></span>
               </span>
               <span>Live</span>
               <Separator orientation="vertical" className="h-3" />
@@ -1365,71 +1786,31 @@ if (pendingError) {
             </CardContent>
           </Card>
 
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Train #</TableHead>
-                  <TableHead>Segment</TableHead>
-                  <TableHead>Scheduled Time</TableHead>
-                  <TableHead className="text-right">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loadingTimetable ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell>
-                        <Skeleton className="h-4 w-16" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-28" />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Skeleton className="h-5 w-16" />
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : timetable.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={4}
-                      className="py-8 text-center text-sm text-muted-foreground"
-                    >
-                      <TrainFront className="mx-auto mb-2 h-6 w-6" />
-                      No timetable entries. Hit "Refresh Live Timetable" to seed
-                      the feed.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  timetable.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="font-mono">
-                        {row.train_number}
-                      </TableCell>
-                      <TableCell>{row.segments?.name ?? "—"}</TableCell>
-                      <TableCell>
-                        <span suppressHydrationWarning>
-                          {fmtDateTime(row.scheduled_time)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Badge
-                          variant={statusVariant(row.status)}
-                          className="gap-1.5 capitalize"
-                        >
-                          <span className={`w-2 h-2 rounded-full ${row.status === "delayed" || row.status === "cancelled" ? "bg-amber-500 dark:bg-amber-400 animate-pulse" : "bg-emerald-500 dark:bg-emerald-400 animate-pulse"}`}></span>
-                          {statusLabel(row.status)}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+          {loadingTimetable ? (
+            <div className="grid gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-4 rounded-xl border bg-card"
+                >
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-9 w-9 rounded-full" />
+                    <div className="space-y-1.5">
+                      <Skeleton className="h-4 w-16" />
+                      <Skeleton className="h-3 w-44" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-5 w-16" />
+                </div>
+              ))}
+            </div>
+          ) : timetable.length === 0 ? (
+            <div className="rounded-xl border bg-card py-8 text-center text-sm text-muted-foreground">
+              <TrainFront className="mx-auto mb-2 h-6 w-6" />
+              No timetable entries. Hit "Refresh Live Timetable" to seed the
+              feed.
+            </div>
+          ) : (
             <div className="grid gap-3">
               {timetable.map(train => (
                 <div key={train.id} className="flex items-center justify-between p-4 rounded-xl border bg-card hover:shadow-md transition-all">
@@ -1439,17 +1820,17 @@ if (pendingError) {
                     </div>
                     <div>
                       <p className="font-bold font-mono">{train.train_number}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">{train.segments?.name ?? "—"} <ArrowRight className="w-3 h-3" /> <span suppressHydrationWarning>{fmtDateTime(train.scheduled_time)}</span></p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">{train.segments?.name ?? "â€”"} <ArrowRight className="w-3 h-3" /> <span suppressHydrationWarning>{fmtDateTime(train.scheduled_time)}</span></p>
                     </div>
                   </div>
                   <Badge variant={statusVariant(train.status)} className="gap-1.5 capitalize">
-                    <span className={`w-2 h-2 rounded-full ${train.status === "delayed" || train.status === "cancelled" ? "bg-amber-500 dark:bg-amber-400 animate-pulse" : "bg-emerald-500 dark:bg-emerald-400 animate-pulse"}`}></span>
+                    <span className={`w-2 h-2 rounded-full animate-pulse ${train.status === "delayed" || train.status === "cancelled" ? "bg-warning" : "bg-success"}`}></span>
                     {statusLabel(train.status)}
                   </Badge>
                 </div>
               ))}
             </div>
-          </div>
+          )}
         </TabsContent>
 
         <TabsContent value="pending" className="space-y-3">
@@ -1495,7 +1876,7 @@ if (pendingError) {
                           <span suppressHydrationWarning>
                             {fmtDateTime(br.requested_start)}
                           </span>{" "}
-                          · {fmtDuration(br.requested_duration_mins)}
+                          Â· {fmtDuration(br.requested_duration_mins)}
                         </CardDescription>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -1571,7 +1952,7 @@ if (pendingError) {
                                     <Sparkles className="mt-0.5 h-4 w-4 text-primary" />
                                   )}
                                   <span className="text-sm font-medium">
-                                    {fmtDateTime(opt.adjusted_start)} •{" "}
+                                    {fmtDateTime(opt.adjusted_start)} â€¢{" "}
                                     {fmtDuration(opt.adjusted_duration_mins)}
                                   </span>
                                 </div>
@@ -1609,7 +1990,7 @@ if (pendingError) {
                                     Priority Score
                                   </span>
                                   <span className="font-medium">
-                                    {score ?? "—"}
+                                    {score ?? "â€”"}
                                   </span>
                                 </div>
                                 <Progress
@@ -1673,7 +2054,7 @@ if (pendingError) {
         <TabsContent value="verify" className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">
-              Completed Field Work —{" "}
+              Completed Field Work â€”{" "}
               {showUnverifiedOnly
                 ? `${verifyLogs.filter((l) => !l.verified).length} unverified`
                 : `${verifyLogs.length} total`}
@@ -1742,8 +2123,8 @@ if (pendingError) {
               .filter((l) => (showUnverifiedOnly ? !l.verified : true))
               .map((log) => {
                 const req = log.block_requests ?? null;
-                const segmentName = req?.segments?.name ?? "—";
-                const wt = req?.work_type ?? ("—" as BlockRequestWorkType);
+                const segmentName = req?.segments?.name ?? "â€”";
+                const wt = req?.work_type ?? ("â€”" as BlockRequestWorkType);
                 const varianceMins = computeVarianceMins(log);
                 const actualMins =
                   log.actual_start && log.actual_end
@@ -1765,10 +2146,10 @@ if (pendingError) {
                             {segmentName}
                           </CardTitle>
                           <CardDescription>
-                            {workTypeLabel(wt)} ·{" "}
+                            {workTypeLabel(wt)} Â·{" "}
                             {log.actual_start
                               ? fmtDateTime(log.actual_start)
-                              : "—"}
+                              : "â€”"}
                           </CardDescription>
                           {req?.work_description ? (
                             <p className="mt-1 text-sm text-muted-foreground">
@@ -1838,7 +2219,7 @@ if (pendingError) {
                           <span>
                             {log.actual_start
                               ? fmtDateTime(log.actual_start)
-                              : "—"}
+                              : "â€”"}
                           </span>
                         </div>
                         <div className="flex flex-col">
@@ -1846,7 +2227,7 @@ if (pendingError) {
                             Actual End
                           </span>
                           <span>
-                            {log.actual_end ? fmtDateTime(log.actual_end) : "—"}
+                            {log.actual_end ? fmtDateTime(log.actual_end) : "â€”"}
                           </span>
                         </div>
                         <div className="flex flex-col">
@@ -1854,7 +2235,7 @@ if (pendingError) {
                             Actual Duration
                           </span>
                           <span>
-                            {actualMins != null ? fmtDuration(actualMins) : "—"}
+                            {actualMins != null ? fmtDuration(actualMins) : "â€”"}
                           </span>
                         </div>
                         <div className="flex flex-col">
@@ -1877,7 +2258,7 @@ if (pendingError) {
                             ) : null}
                             {varianceMins != null
                               ? fmtVarianceMins(varianceMins)
-                              : "—"}
+                              : "â€”"}
                           </span>
                         </div>
                       </div>
@@ -1902,7 +2283,7 @@ if (pendingError) {
                             <Check className="h-4 w-4" />
                           )}
                           <span className="ml-1">
-                            {isActing ? "Marking…" : "Mark Verified"}
+                            {isActing ? "Markingâ€¦" : "Mark Verified"}
                           </span>
                         </Button>
                       )}
@@ -1960,7 +2341,7 @@ if (pendingError) {
                 <div className="space-y-4 py-2 text-sm">
                   <div className="grid grid-cols-2 gap-2">
                     <span className="text-muted-foreground">Segment</span>
-                    <span>{modifyTarget.segments?.name ?? "—"}</span>
+                    <span>{modifyTarget.segments?.name ?? "â€”"}</span>
                     <span className="text-muted-foreground">Priority</span>
                     <span>{priorityLabel(modifyTarget.priority_score)}</span>
                     <span className="text-muted-foreground">

@@ -5,7 +5,6 @@ import {
   MapContainer,
   TileLayer,
   Marker,
-  useMapEvents,
 } from "react-leaflet"
 import L from "leaflet"
 import { cn } from "@/lib/utils"
@@ -27,22 +26,6 @@ interface MapPreviewProps {
   lat: number | null
   lng: number | null
   className?: string
-}
-
-function MapEvents({
-  onCenter,
-}: {
-  onCenter: (center: L.LatLngExpression) => void
-}) {
-  const map = useMapEvents({
-    click() {
-      map?.getCenter && onCenter(map.getCenter())
-    },
-  })
-  useEffect(() => {
-    if (map) onCenter(map.getCenter())
-  }, [map, onCenter])
-  return null
 }
 
 export default function MapPreview({

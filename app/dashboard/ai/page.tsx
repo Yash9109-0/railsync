@@ -9,14 +9,14 @@ export default function AiPage() {
     <Tabs defaultValue="per-request" className="space-y-6">
       <TabsList>
         <TabsTrigger value="per-request">Per-Request AI</TabsTrigger>
-        <TabsTrigger value="planning">Weekly/Monthly Planning</TabsTrigger>
+        <TabsTrigger value="planning" data-tour="planning-tab">Weekly/Monthly Planning</TabsTrigger>
       </TabsList>
 
       <TabsContent value="per-request" className="mt-0">
         <ScoredRequestsBoard />
       </TabsContent>
 
-      <TabsContent value="planning" className="mt-0">
+      <TabsContent value="planning" className="mt-0" data-tour="planning-tab-content">
         <HorizonPlanningCalendar />
       </TabsContent>
     </Tabs>

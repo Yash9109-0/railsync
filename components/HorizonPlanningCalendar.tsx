@@ -1,13 +1,25 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
+import { AsyncButton } from "@/components/ui/async-button"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ErrorState } from "@/components/ui/ErrorState"
+import { EmptyState } from "@/components/ui/EmptyState"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogClose,
+} from "@/components/ui/dialog"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
-import { ChevronDown, ChevronUp, Loader2, CalendarDays, X } from "lucide-react"
+import { ChevronDown, ChevronUp, CalendarDays, Calendar, HelpCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type HorizonRow = {
@@ -82,30 +94,28 @@ function formatHour(hour: number | null): string {
   return mm === 0 ? `${hh}:00` : `${hh}:${String(mm).padStart(2, "0")}`
 }
 
-function horizonTypeBadge(type: "weekly" | "monthly") {
-  return type === "weekly"
-    ? "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-600/20"
-    : "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-600/20"
+function getAvailabilityColorClass(pct: number): string {
+  if (pct > 80) return "text-success"
+  if (pct >= 60) return "text-warning"
+  return "text-destructive"
 }
 
-function statusColorClass(status: "scheduled" | "deferred" | null | undefined) {
+function chipStatusClass(status: "scheduled" | "deferred"): string {
   if (status === "scheduled") {
-    return "bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 dark:bg-purple-900/35 dark:border-purple-900/60"
+    return "bg-primary/10 text-primary border-primary/20 dark:bg-primary/20 dark:text-primary dark:border-primary/30"
   }
-  return "bg-amber-500/5 text-amber-700 dark:text-amber-300 border border-amber-500/50 dark:bg-amber-900/25 dark:border-amber-400"
+  return "bg-warning/10 text-warning border-warning/20 dark:bg-warning/20 dark:text-warning dark:border-warning/30"
 }
 
-function availabilityColor(pct: number) {
-  if (pct > 80) return "text-green-500 dark:text-green-400"
-  if (pct >= 60) return "text-amber-500 dark:text-amber-400"
-  return "text-red-500 dark:text-red-400"
+function getHorizonTypeBadgeClass(type: "weekly" | "monthly"): string {
+  return type === "weekly" ? "default" : "success"
 }
 
-function chipStatusClass(status: "scheduled" | "deferred") {
+function getStatusColorClass(status: "scheduled" | "deferred" | null | undefined): string {
   if (status === "scheduled") {
-    return "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-800"
+    return "text-primary"
   }
-  return "bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-dashed border-amber-400 dark:border-amber-600"
+  return "text-warning"
 }
 
 function buildWeekDays(start: Date): CalDay[] {
@@ -147,49 +157,63 @@ function buildMonthGrid(start: Date): CalDay[][] {
 function AvailabilityGauge({ value }: { value: number | null }) {
   const pct = value != null ? Math.round(value) : 0
   const colorClass =
-    value != null ? availabilityColor(pct) : "text-muted-foreground/50"
+    value != null ? getAvailabilityColorClass(pct) : "text-muted-foreground/50"
   const radius = 42
   const strokeWidth = 7
   const circumference = 2 * Math.PI * radius
   const dashOffset = circumference - (pct / 100) * circumference
+  const [animated, setAnimated] = useState(false)
+
+  useEffect(() => {
+    setAnimated(true)
+  }, [])
+
+  const initialOffset = animated ? dashOffset : circumference
 
   return (
-    <div
-      className="relative h-32 w-32"
-      role="img"
-      aria-label="Availability gauge"
-    >
-      <svg viewBox="0 0 100 100" className="h-full w-full">
-        <circle
-          cx="50"
-          cy="50"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={strokeWidth}
-          className="text-muted-foreground/30"
-        />
-        <circle
-          cx="50"
-          cy="50"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={strokeWidth}
-          strokeDasharray={circumference}
-          strokeDashoffset={dashOffset}
-          strokeLinecap="round"
-          transform="rotate(-90 50 50)"
-          className={colorClass}
-          style={{ transition: "stroke-dashoffset 0.5s ease" }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-xl font-bold">
-          {value != null ? `${pct}%` : "\u2014"}
-        </span>
-      </div>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className="relative h-32 w-32 flex items-center justify-center"
+          role="img"
+          aria-label="Availability gauge"
+        >
+          <svg viewBox="0 0 100 100" className="h-full w-full">
+            <circle
+              cx="50"
+              cy="50"
+              r={radius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={strokeWidth}
+              className="text-muted-foreground/30"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r={radius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={strokeWidth}
+              strokeDasharray={circumference}
+              strokeDashoffset={initialOffset}
+              strokeLinecap="round"
+              transform="rotate(-90 50 50)"
+              className={colorClass}
+              style={{ transition: "stroke-dashoffset var(--duration-slow) var(--ease-standard)" }}
+            />
+          </svg>
+          <span className="text-2xl font-bold tracking-tight font-heading">
+            {value != null ? `${pct}%` : "\u2014"}
+          </span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <p className="text-xs">
+          Projected percentage of track time available for passenger trains after scheduling maintenance blocks. Higher is better.
+        </p>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -197,91 +221,127 @@ function CalendarDayChip({
   item,
   request,
   onSelect,
+  animationDelay = 0,
 }: {
   item: HorizonItemRow
   request: RequestInfo | undefined
   onSelect: () => void
+  animationDelay?: number
 }) {
   const segmentName =
     request?.segment_name ?? `Req ${item.block_request_id.slice(0, 8)}`
   const startTime = formatHour(item.assigned_start_hour)
   const chipText = startTime ? `${segmentName} ${startTime}` : segmentName
+  const workDescription = request?.work_description ?? ""
+  const ariaLabel = workDescription
+    ? `${chipText}. ${workDescription}`
+    : chipText
+
+  const style = animationDelay > 0 ? {
+    animationDelay: `${animationDelay}ms`,
+    opacity: 0, // Start invisible, animation will bring it in
+  } as React.CSSProperties : undefined
 
   return (
     <button
       type="button"
-      title={request?.work_description ?? ""}
       onClick={onSelect}
+      aria-label={ariaLabel}
       className={cn(
-        "block w-full truncate rounded-full px-2 py-0.5 text-[11px] font-medium mb-1",
+        "block w-full truncate rounded-full px-2 py-1 text-xs font-medium mb-1 animate-calendar-item-enter",
         chipStatusClass(item.status),
       )}
+      style={style}
     >
       <span className="block w-full truncate">{chipText}</span>
     </button>
   )
 }
 
-function ItemDetailPopover({
+function ItemDetailDialog({
   item,
   request,
-  onClose,
+  open,
+  onOpenChange,
 }: {
-  item: HorizonItemRow
+  item: HorizonItemRow | null
   request: RequestInfo | undefined
-  onClose: () => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }) {
+  if (!item) return null
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
-      <div className="relative w-64 rounded-lg border bg-popover dark:bg-gray-800 dark:border-gray-700 p-3 shadow-xl">
-        <button
-          onClick={onClose}
-          className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <div className="space-y-3 pr-6">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[90vw] max-w-sm sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Work Item Details</DialogTitle>
+          <DialogDescription>
+            {request?.segment_name ?? `Request ${item.block_request_id.slice(0, 8)}`}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
           <div>
-            <span className="text-xs text-muted-foreground">Work Description</span>
-            <p className="text-sm break-words">
-              {request?.work_description ?? "\u2014"}
-            </p>
+            <span className="text-xs text-muted-foreground block mb-1">Work Description</span>
+            <p className="text-sm break-words">{request?.work_description ?? "—"}</p>
           </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-muted-foreground">Priority Score</span>
-            <Badge variant="outline" className="text-xs">
-              {item.priority_score != null
-                ? Math.round(item.priority_score)
-                : "\u2014"}
-            </Badge>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-muted-foreground">Reason</span>
-            <span className="text-sm text-right break-words">
-              {item.reason ?? "\u2014"}
-            </span>
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-xs text-muted-foreground">Priority Score</span>
+                <Badge variant="outline" className="flex items-center gap-1">
+                  {item.priority_score != null ? Math.round(item.priority_score) : "—"}
+                  <HelpCircle className="h-3 w-3" aria-hidden="true" />
+                </Badge>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              <p className="text-xs">
+                Calculated by our AI model from safety criticality, traffic density, and urgency detected in the work description.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-xs text-muted-foreground">Reason</span>
+                <span className="text-sm text-right break-words">{item.reason ?? "—"}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              <p className="text-xs">
+                Explanation for why this request was scheduled or deferred.
+              </p>
+            </TooltipContent>
+          </Tooltip>
           <div className="flex justify-between">
             <span className="text-xs text-muted-foreground">Department</span>
-            <span className="text-sm">
-              {request?.department ?? "Unassigned"}
-            </span>
+            <span className="text-sm">{request?.department ?? "Unassigned"}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-xs text-muted-foreground">Status</span>
-            <Badge
-              variant="outline"
-              className={cn(
-                "border-0 bg-transparent px-1 py-0 font-normal",
-                statusColorClass(item.status),
-              )}
-            >
-              {item.status}
-            </Badge>
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-xs text-muted-foreground">Status</span>
+                <Badge variant="outline" className={cn("border-0 bg-transparent px-1 py-0 font-normal text-xs flex items-center gap-1", getStatusColorClass(item.status))}>
+                  {item.status}
+                  <HelpCircle className="h-3 w-3" aria-hidden="true" />
+                </Badge>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              <p className="text-xs">
+                Scheduled: assigned a date and time. Deferred: could not fit within segment capacity during optimization.
+              </p>
+            </TooltipContent>
+          </Tooltip>
         </div>
-      </div>
-    </div>
+        <DialogClose asChild>
+          <Button variant="outline" className="w-full mt-4" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogClose>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -302,12 +362,12 @@ function CalendarSkeleton({ monthly }: { monthly: boolean }) {
 function CalendarLegend() {
   return (
     <div className="mt-4 flex gap-4 text-xs text-muted-foreground">
-      <div className="flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded-full bg-purple-500 dark:bg-purple-400" />
+      <div className="flex items-center gap-2">
+        <span className="h-3 w-3 rounded-full bg-primary" />
         <span>Scheduled</span>
       </div>
-      <div className="flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded-full border border-dashed border-amber-400 dark:border-amber-600" />
+      <div className="flex items-center gap-2">
+        <span className="h-3 w-3 rounded-full border border-dashed border-warning" />
         <span>Deferred</span>
       </div>
     </div>
@@ -321,24 +381,29 @@ export default function HorizonPlanningCalendar() {
   )
   const [horizons, setHorizons] = useState<HorizonRow[]>([])
   const [horizonsLoading, setHorizonsLoading] = useState(false)
-  const [generating, setGenerating] = useState(false)
+  const [horizonsError, setHorizonsError] = useState<string | null>(null)
   const [expandedHorizon, setExpandedHorizon] = useState<string | null>(null)
   const [horizonItems, setHorizonItems] = useState<Record<string, HorizonItemRow[]>>({})
+  const [horizonItemsError, setHorizonItemsError] = useState<Record<string, string>>({})
   const [horizonRequests, setHorizonRequests] = useState<Record<string, RequestInfo>>({})
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [justGeneratedHorizonId, setJustGeneratedHorizonId] = useState<string | null>(null)
 
   const loadHorizons = async () => {
     setHorizonsLoading(true)
+    setHorizonsError(null)
     try {
       const res = await fetch("/api/horizons", { cache: "no-store" })
       const json = await res.json()
       if (!res.ok || json.error) {
+        setHorizonsError(json.error ?? "Failed to load planning horizons")
         toast.error(json.error ?? "Failed to load planning horizons")
         setHorizons([])
       } else {
         setHorizons((json.horizons ?? []) as HorizonRow[])
       }
     } catch {
+      setHorizonsError("Failed to load planning horizons")
       toast.error("Failed to load planning horizons")
       setHorizons([])
     } finally {
@@ -348,28 +413,24 @@ export default function HorizonPlanningCalendar() {
 
   const handleGeneratePlan = async () => {
     if (!horizonStartDate) return
-    setGenerating(true)
-    try {
-      const res = await fetch("/api/generate-horizon-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          horizonType,
-          startDate: new Date(horizonStartDate).toISOString(),
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok || json.error) {
-        toast.error(json.error ?? "Failed to generate plan")
-        return
-      }
-      toast.success("Plan generated successfully")
-      await loadHorizons()
-    } catch {
-      toast.error("Failed to generate plan")
-    } finally {
-      setGenerating(false)
+    const res = await fetch("/api/generate-horizon-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        horizonType,
+        startDate: new Date(horizonStartDate).toISOString(),
+      }),
+    })
+    const json = await res.json()
+    if (!res.ok || json.error) {
+      throw new Error(json.error ?? "Failed to generate plan")
     }
+    toast.success("Plan generated")
+    // Track the newly generated horizon ID for staggered animation
+    if (json.horizon?.id) {
+      setJustGeneratedHorizonId(json.horizon.id)
+    }
+    await loadHorizons()
   }
 
   const loadHorizonDetails = async (id: string) => {
@@ -378,23 +439,40 @@ export default function HorizonPlanningCalendar() {
       const json = await res.json()
       if (!res.ok || json.error) {
         toast.error(json.error ?? "Failed to load horizon items")
+        setHorizonItems((prev) => ({ ...prev, [id]: [] }))
+        setHorizonItemsError((prev) => ({ ...prev, [id]: json.error ?? "Failed to load horizon items" }))
         return
       }
       const items = (json.items ?? []) as HorizonItemRow[]
       setHorizonItems((prev) => ({ ...prev, [id]: items }))
+      setHorizonItemsError((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
       for (const r of (json.requests ?? []) as RequestInfo[]) {
         setHorizonRequests((prev) => ({ ...prev, [r.id]: r }))
       }
     } catch {
       toast.error("Failed to load horizon details")
+      setHorizonItems((prev) => ({ ...prev, [id]: [] }))
+      setHorizonItemsError((prev) => ({ ...prev, [id]: "Failed to load horizon details" }))
     }
   }
 
   const toggleHorizonExpanded = (id: string) => {
     if (expandedHorizon === id) {
       setExpandedHorizon(null)
+      // Clear the just-generated flag when collapsing
+      if (justGeneratedHorizonId === id) {
+        setJustGeneratedHorizonId(null)
+      }
     } else {
       setExpandedHorizon(id)
+      // Clear the just-generated flag when expanding a different horizon
+      if (justGeneratedHorizonId && justGeneratedHorizonId !== id) {
+        setJustGeneratedHorizonId(null)
+      }
       if (!horizonItems[id]) {
         loadHorizonDetails(id)
       }
@@ -407,7 +485,7 @@ export default function HorizonPlanningCalendar() {
         .find((item) => item.id === selectedItemId)
     : null
 
-  const renderCalendar = (h: HorizonRow, items: HorizonItemRow[]) => {
+  const renderCalendar = (h: HorizonRow, items: HorizonItemRow[], isJustGenerated: boolean) => {
     const start = parseYmd(h.horizon_start)
     if (!start) {
       return <p className="text-sm text-muted-foreground">Invalid horizon dates.</p>
@@ -419,14 +497,12 @@ export default function HorizonPlanningCalendar() {
   const itemsByDay = new Map<string, HorizonItemRow[]>()
   const unassigned: HorizonItemRow[] = []
 
-  // Helper to get YMD string from flat element OR from horizon_start + offset
   const getFlatYmd = (idx: number) => {
-    const el:any = flat[idx]
+    const el: any = flat[idx]
     if (!el) return ""
-    if (typeof el === "string") return el.split('T')[0]
-    if (el instanceof Date) return el.toISOString().split('T')[0]
-    // your buildWeekDays likely returns { date: Date, ymd: string } or { iso: string }
-    return el.ymd || el.dateStr || el.iso || el.date?.toISOString?.().split('T')[0] || ""
+    if (typeof el === "string") return el.split("T")[0]
+    if (el instanceof Date) return el.toISOString().split("T")[0]
+    return el.ymd || el.dateStr || el.iso || el.date?.toISOString?.().split("T")[0] || ""
   }
 
   const allSameDate = items.length > 1 && items.every(i => i.assigned_date === items[0].assigned_date)
@@ -436,16 +512,30 @@ export default function HorizonPlanningCalendar() {
     if (item.assigned_date) {
       let targetDate = item.assigned_date
       if (allSameDate) {
-        // use the actual calendar cell date from flat
         const flatYmd = getFlatYmd(idx % flat.length)
         if (flatYmd) targetDate = flatYmd
       }
-      const group = itemsByDay.get(targetDate)?? []
+      const group = itemsByDay.get(targetDate) ?? []
       group.push(item)
       itemsByDay.set(targetDate, group)
     } else {
       unassigned.push(item)
     }
+  }
+
+  // Flatten all items in render order to compute staggered delays
+  const allDayItems: HorizonItemRow[] = []
+  flat.forEach((d) => {
+    const dayItems = itemsByDay.get(d.key) ?? []
+    dayItems.forEach((item) => allDayItems.push(item))
+  })
+  unassigned.forEach((item) => allDayItems.push(item))
+
+  const getItemDelay = (itemId: string) => {
+    if (!isJustGenerated) return 0
+    const index = allDayItems.findIndex((item) => item.id === itemId)
+    if (index === -1) return 0
+    return index * 60 // 60ms delay between each item (50-80ms range)
   }
 
     if (h.horizon_type === "weekly") {
@@ -459,7 +549,7 @@ export default function HorizonPlanningCalendar() {
                 className="flex flex-col items-center justify-center"
               >
                 <span className="text-xs font-medium">{dayName(d.date)}</span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {d.date.getUTCDate()}
                 </span>
               </div>
@@ -470,12 +560,12 @@ export default function HorizonPlanningCalendar() {
                 <div
                   key={`b-${d.key}`}
                   className={cn(
-                    "min-h-[140px] border rounded-lg p-2 bg-card",
-                    dayItems.length === 0 && "bg-muted/30",
+                    "min-h-36 border rounded-lg p-2 bg-card",
+                    dayItems.length === 0 && "bg-muted/20 opacity-60",
                   )}
                 >
                   {dayItems.length === 0 ? (
-                    <span className="text-[10px] text-muted-foreground/40">—</span>
+                    <span className="text-xs text-muted-foreground/30">—</span>
                   ) : (
                     dayItems.map((item) => (
                       <CalendarDayChip
@@ -483,6 +573,7 @@ export default function HorizonPlanningCalendar() {
                         item={item}
                         request={horizonRequests[item.block_request_id]}
                         onSelect={() => setSelectedItemId(item.id)}
+                        animationDelay={getItemDelay(item.id)}
                       />
                     ))
                   )}
@@ -498,13 +589,14 @@ export default function HorizonPlanningCalendar() {
               <p className="mb-2 text-xs font-medium text-muted-foreground">
                 Deferred (unassigned date)
               </p>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 {unassigned.map((item) => (
                   <CalendarDayChip
                     key={item.id}
                     item={item}
                     request={horizonRequests[item.block_request_id]}
                     onSelect={() => setSelectedItemId(item.id)}
+                    animationDelay={getItemDelay(item.id)}
                   />
                 ))}
               </div>
@@ -520,64 +612,69 @@ export default function HorizonPlanningCalendar() {
             {DAY_NAMES_SHORT.map((d, i) => (
               <div
                 key={`h-${i}`}
-                className="bg-muted/50 py-1.5 text-center text-xs font-medium"
+                className="bg-muted/50 py-2 text-center text-xs font-medium"
               >
-              {d}
-            </div>
-          ))}
-          {flat.map((d, i) => {
-            const dayItems = itemsByDay.get(d.key) ?? []
-            return (
-              <div
-                key={`b-${i}`}
-                className={cn(
-                  "relative bg-card min-h-[100px] p-1",
-                  !d.inMonth && "bg-muted/30",
-                  d.inMonth && dayItems.length === 0 && "bg-muted/10",
-                )}
-              >
-                {d.inMonth && (
-                  <span className="absolute top-1 left-1 text-sm text-muted-foreground/60">
-                    {d.date.getUTCDate()}
-                  </span>
-                )}
-                {d.inMonth && dayItems.length > 0 && (
-                  <div className="pt-5">
-                    {dayItems.map((item) => (
-                      <CalendarDayChip
-                        key={item.id}
-                        item={item}
-                        request={horizonRequests[item.block_request_id]}
-                        onSelect={() => setSelectedItemId(item.id)}
-                      />
-                    ))}
-                  </div>
-                )}
+                {d}
               </div>
-            )
-          })}
-        </div>
-
-        <CalendarLegend />
-
-        {unassigned.length > 0 && (
-          <div className="mt-4">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Deferred (unassigned date)
-            </p>
-            <div className="flex flex-col gap-1.5">
-              {unassigned.map((item) => (
-                <CalendarDayChip
-                  key={item.id}
-                  item={item}
-                  request={horizonRequests[item.block_request_id]}
-                  onSelect={() => setSelectedItemId(item.id)}
-                />
-              ))}
-            </div>
+            ))}
+            {flat.map((d, i) => {
+              const dayItems = itemsByDay.get(d.key) ?? []
+              return (
+                <div
+                  key={`b-${i}`}
+                  className={cn(
+                    "relative bg-card min-h-24 p-1",
+                    !d.inMonth && "bg-muted/30 opacity-50",
+                    d.inMonth && dayItems.length === 0 && "bg-muted/5 opacity-60",
+                  )}
+                >
+                  {d.inMonth && (
+                    <span className={cn(
+                      "absolute top-1 left-1 text-sm",
+                      dayItems.length === 0 ? "text-muted-foreground/30" : "text-muted-foreground/60"
+                    )}>
+                      {d.date.getUTCDate()}
+                    </span>
+                  )}
+                  {d.inMonth && dayItems.length > 0 && (
+                    <div className="pt-6">
+                      {dayItems.map((item) => (
+                        <CalendarDayChip
+                          key={item.id}
+                          item={item}
+                          request={horizonRequests[item.block_request_id]}
+                          onSelect={() => setSelectedItemId(item.id)}
+                          animationDelay={getItemDelay(item.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
-        )}
-      </div>
+
+          <CalendarLegend />
+
+          {unassigned.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">
+                Deferred (unassigned date)
+              </p>
+              <div className="flex flex-col gap-2">
+                {unassigned.map((item) => (
+                  <CalendarDayChip
+                    key={item.id}
+                    item={item}
+                    request={horizonRequests[item.block_request_id]}
+                    onSelect={() => setSelectedItemId(item.id)}
+                    animationDelay={getItemDelay(item.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
     )
   }
 
@@ -586,28 +683,47 @@ export default function HorizonPlanningCalendar() {
     const items = horizonItems[h.id] ?? []
     const detailsLoaded = horizonItems[h.id] !== undefined
     const isLoadingDetails = isExpanded && !detailsLoaded
+    const itemsError = horizonItemsError[h.id]
 
     return (
       <Card key={h.id}>
-        <CardContent className="pt-6">
+        <CardContent>
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline" className={horizonTypeBadge(h.horizon_type)}>
+                <Badge variant={getHorizonTypeBadgeClass(h.horizon_type)}>
                   {h.horizon_type === "weekly" ? "Weekly" : "Monthly"}
                 </Badge>
                 
-                {/* --- NAYA AI SOLVER BADGE --- */}
                 {h.solver_used === 'cp-sat' ? (
-                  <Badge className="bg-purple-600 hover:bg-purple-700 text-white shadow-sm">
-                    Optimal (CP-SAT)
-                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="primary" className="gap-1">
+                        Optimal (CP-SAT)
+                        <HelpCircle className="h-3 w-3" aria-hidden="true" />
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs">
+                      <p className="text-xs">
+                        This plan was generated using a mathematical constraint solver that guarantees the best possible schedule given current constraints.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
                 ) : (
-                  <Badge variant="secondary" className="bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                    Heuristic (Fallback)
-                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="secondary" className="gap-1">
+                        Heuristic (Fallback)
+                        <HelpCircle className="h-3 w-3" aria-hidden="true" />
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs">
+                      <p className="text-xs">
+                        This plan was generated using a fast heuristic algorithm as a fallback when the optimal solver was unavailable.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
                 )}
-                {/* ----------------------------- */}
 
                 <span className="text-xs text-muted-foreground">
                   {formatDate(h.horizon_start)} → {formatDate(h.horizon_end)}
@@ -622,13 +738,23 @@ export default function HorizonPlanningCalendar() {
             </div>
             <div className="flex items-center gap-3 shrink-0">
               <div className="text-right">
-                <div className="text-2xl font-bold">
-                  {h.projected_availability_pct != null
-                    ? `${Math.round(h.projected_availability_pct)}%`
-                    : "\u2014"}
-                </div>
-                <span className="text-xs text-muted-foreground">Availability</span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="text-3xl font-bold tracking-tight font-heading tabular-nums flex items-baseline gap-1">
+                      {h.projected_availability_pct != null
+                        ? `${Math.round(h.projected_availability_pct)}%`
+                        : "\u2014"}
+                      <HelpCircle className="h-4 w-4 text-muted-foreground/50 hover:text-muted-foreground cursor-help" aria-hidden="true" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    <p className="text-xs">
+                      Projected percentage of track time available for passenger trains after scheduling maintenance blocks. Higher is better.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
+              <span className="text-xs text-muted-foreground">Availability</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -645,10 +771,10 @@ export default function HorizonPlanningCalendar() {
           </div>
 
           {isExpanded && (
-            <div className="mt-5 space-y-4">
+            <div className="mt-6 space-y-4">
               <div className="flex items-start gap-4">
                 <AvailabilityGauge value={h.projected_availability_pct} />
-                <div className="flex-1 border-l-4 border-[#960DF2] bg-purple-50 dark:bg-purple-900/20 rounded-md px-4 py-3">
+                <div className="flex-1 border-l-4 border-primary bg-purple-50 dark:bg-purple-900/20 rounded-md px-4 py-3">
                   <p className="text-sm whitespace-pre-wrap">
                     {h.summary_explanation ?? "No summary available."}
                   </p>
@@ -657,12 +783,20 @@ export default function HorizonPlanningCalendar() {
               {!detailsLoaded && isLoadingDetails && (
                 <CalendarSkeleton monthly={h.horizon_type === "monthly"} />
               )}
-              {detailsLoaded && items.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No items in this horizon.
-                </p>
+              {detailsLoaded && itemsError && (
+                <ErrorState
+                  onRetry={() => loadHorizonDetails(h.id)}
+                  className="mt-2"
+                />
               )}
-              {detailsLoaded && items.length > 0 && renderCalendar(h, items)}
+              {detailsLoaded && !itemsError && items.length === 0 && (
+                <EmptyState
+                  icon={Calendar}
+                  title="No items in this horizon"
+                  description="This plan was generated with no scheduled requests."
+                />
+              )}
+              {detailsLoaded && !itemsError && items.length > 0 && renderCalendar(h, items, justGeneratedHorizonId === h.id)}
             </div>
           )}
         </CardContent>
@@ -674,12 +808,22 @@ export default function HorizonPlanningCalendar() {
     loadHorizons()
   }, [])
 
+  // Auto-clear justGeneratedHorizonId after animation completes
+  useEffect(() => {
+    if (justGeneratedHorizonId) {
+      const timeout = setTimeout(() => {
+        setJustGeneratedHorizonId(null)
+      }, 5000) // Clear after 5 seconds (enough for all staggered animations)
+      return () => clearTimeout(timeout)
+    }
+  }, [justGeneratedHorizonId])
+
   return (
     <div className="space-y-6">
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-48">
               <label htmlFor="horizon-start-date" className="text-sm font-medium">
                 Start Date
               </label>
@@ -706,23 +850,17 @@ export default function HorizonPlanningCalendar() {
                 Monthly
               </Button>
             </div>
-            <Button
+            <AsyncButton
+              id="generate-plan-btn"
               size="sm"
-              disabled={!horizonStartDate || generating}
+              disabled={!horizonStartDate}
               onClick={handleGeneratePlan}
+              successMessage="Plan generated"
+              errorMessage="Failed to generate plan"
+              icon={<CalendarDays className="h-4 w-4" />}
             >
-              {generating ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
-                  Generate Plan
-                </>
-              )}
-            </Button>
+              Generate Plan
+            </AsyncButton>
           </div>
         </CardContent>
       </Card>
@@ -733,12 +871,18 @@ export default function HorizonPlanningCalendar() {
             <Skeleton key={i} className="h-32 w-full" />
           ))}
         </div>
+      ) : horizonsError ? (
+        <ErrorState onRetry={loadHorizons} />
       ) : horizons.length === 0 ? (
         <Card>
-          <CardContent className="pt-6">
-            <p className="text-center text-muted-foreground">
-              No planning horizons generated yet.
-            </p>
+          <CardContent>
+            <EmptyState
+              icon={Calendar}
+              title="No planning horizons generated yet"
+              description="Generate a weekly or monthly horizon plan to get started."
+              actionLabel="Generate a Plan"
+              onAction={() => document.getElementById("generate-plan-btn")?.click()}
+            />
           </CardContent>
         </Card>
       ) : (
@@ -748,10 +892,11 @@ export default function HorizonPlanningCalendar() {
       )}
 
       {selectedItem && (
-        <ItemDetailPopover
+        <ItemDetailDialog
           item={selectedItem}
           request={horizonRequests[selectedItem.block_request_id]}
-          onClose={() => setSelectedItemId(null)}
+          open={!!selectedItem}
+          onOpenChange={(open) => !open && setSelectedItemId(null)}
         />
       )}
     </div>

@@ -5,7 +5,7 @@ const ADMIN = 'admin-test@railsync.dev'
 const MAINT = 'maint-test@railsync.dev'
 const PASS = 'Testpass123!'
 
-export async function POST(request: Request) {
+export async function POST() {
   const sb = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,

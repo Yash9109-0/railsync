@@ -86,14 +86,47 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <Card className="w-full max-w-md shadow-lg">
+    <div className="grid min-h-screen bg-background lg:grid-cols-2">
+      {/* Left brand panel — desktop only */}
+      <aside className="relative isolate hidden overflow-hidden bg-gradient-primary lg:flex lg:flex-col">
+        {/* Dot-grid texture — small white dots at 8% on a 24px grid */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 bg-dot-grid"
+        />
+        {/* Soft blurred glow in the bottom corner */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-24 -left-24 -z-10 h-[400px] w-[400px] rounded-full bg-[hsl(270_90%_72%)] opacity-10 blur-3xl"
+        />
+
+        <div className="flex flex-1 flex-col justify-between p-12 text-primary-foreground">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
+              <TrainFront className="h-5 w-5" />
+            </span>
+            <span className="font-heading text-xl font-bold">RailSync</span>
+          </div>
+
+          <div>
+            <h2 className="max-w-md text-3xl font-bold tracking-tight leading-tight font-heading text-primary-foreground">
+              Unified rail operations, from defect to delivery.
+            </h2>
+            <p className="mt-4 max-w-md text-sm text-primary-foreground/80">
+              Defect tracking, AI-powered block-request scoring, live control, and
+              field execution — all in one place.
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      <Card className="m-auto w-full max-w-md shadow-xl">
         <CardHeader className="space-y-6">
           <div className="flex flex-col items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <TrainFront className="h-6 w-6" />
             </div>
-            <span className="text-xl font-bold text-foreground">RailSync</span>
+            <span className="text-xl font-semibold text-foreground">RailSync</span>
           </div>
           <div className="space-y-1 text-center">
             <CardTitle className="text-2xl">Welcome to RailSync</CardTitle>
@@ -112,12 +145,12 @@ export default function LoginPage() {
                 Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Mail className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
                   placeholder="you@example.com"
-                  className="pl-10"
+                  className="pl-8"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   aria-invalid={!!errors.email}
@@ -142,12 +175,12 @@ export default function LoginPage() {
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Lock className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="password"
                   type="password"
                   placeholder="&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;"
-                  className="pl-10"
+                  className="pl-8"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   aria-invalid={!!errors.password}

@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { createClient } from "@/lib/supabase/client"
 import { Badge } from "@/components/ui/badge"
@@ -44,17 +44,17 @@ const supabase = createClient()
 
 const DEPARTMENTS = ["TMS", "TDMS", "SMMS"] as const
 
-function delayRiskBadge(risk: string | null | undefined) {
+function delayRiskBadge(risk: string | null | undefined): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" {
   const r = (risk ?? "").toLowerCase()
   switch (r) {
     case "low":
-      return "text-green-700 dark:text-green-400 bg-green-500/10 border-green-600/20"
+      return "success"
     case "medium":
-      return "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-600/20"
+      return "warning"
     case "high":
-      return "text-red-700 dark:text-red-400 bg-red-500/10 border-red-600/20"
+      return "destructive"
     default:
-      return "text-muted-foreground bg-muted/50"
+      return "secondary"
   }
 }
 
@@ -69,40 +69,40 @@ function delayRiskMeta(risk: string | null | undefined) {
   return {
     icon: (delayRiskIcon[r] ?? AlertTriangle) as React.ComponentType<{ className?: string }>,
     label: r ? r.charAt(0).toUpperCase() + r.slice(1) : "",
-    className: delayRiskBadge(risk),
+    variant: delayRiskBadge(risk),
   }
 }
 
-function departmentPill(dept: string | null | undefined) {
+function departmentPill(dept: string | null | undefined): string {
   const d = (dept ?? "").toUpperCase()
   switch (d) {
     case "TMS":
-      return "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+      return "bg-primary/10 text-primary border-primary/20 dark:bg-primary/20 dark:text-primary dark:border-primary/30"
     case "TDMS":
-      return "bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/20"
+      return "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20 dark:border-teal-500/30"
     case "SMMS":
-      return "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
+      return "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20 dark:border-indigo-500/30"
     default:
       return "bg-muted/50 text-muted-foreground border border-border"
   }
 }
 
-function safetyBadge(criticality: string | null | undefined) {
+function safetyBadge(criticality: string | null | undefined): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" {
   const c = (criticality ?? "").toLowerCase()
   switch (c) {
     case "critical":
     case "safety_critical":
-      return "text-red-700 dark:text-red-400 bg-red-500/10 border-red-600/20"
+      return "destructive"
     case "urgent":
     case "high":
-      return "text-orange-700 dark:text-orange-400 bg-orange-500/10 border-orange-600/20"
+      return "warning"
     case "medium":
-      return "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-600/20"
+      return "warning"
     case "low":
     case "routine":
-      return "text-green-700 dark:text-green-400 bg-green-500/10 border-green-600/20"
+      return "success"
     default:
-      return "text-muted-foreground bg-muted/50"
+      return "secondary"
   }
 }
 
@@ -124,12 +124,40 @@ function StatCard({
   value: string | number
   icon: React.ReactNode
 }) {
+  const numericValue = typeof value === "number" ? value : Number(value)
+  const [displayValue, setDisplayValue] = useState(0)
+  const [hasAnimated, setHasAnimated] = useState(false)
+
+  useEffect(() => {
+    if (hasAnimated) {
+      setDisplayValue(numericValue)
+      return
+    }
+    const duration = 600
+    const startTime = performance.now()
+    const animate = (now: number) => {
+      const progress = Math.min((now - startTime) / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setDisplayValue(Math.round(numericValue * eased))
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      } else {
+        setHasAnimated(true)
+      }
+    }
+    requestAnimationFrame(animate)
+  }, [numericValue, hasAnimated])
+
+  const formattedValue = typeof value === "number"
+    ? displayValue.toLocaleString()
+    : value.toString().replace(/[\d,]+/, displayValue.toLocaleString())
+
   return (
-    <Card className="border border-border bg-card/50 transition-shadow duration-200 hover:shadow-md">
+    <Card className="border border-border bg-card/50 transition-shadow duration-200 hover:shadow-md bg-gradient-card">
       <CardContent className="pt-5">
         <div className="flex items-center gap-3">
           {icon}
-          <span className="text-3xl font-bold tabular-nums">{value}</span>
+          <span className="text-3xl font-bold tabular-nums font-heading">{formattedValue}</span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{title}</p>
       </CardContent>
@@ -144,10 +172,21 @@ function PriorityRing({ score }: { score: number | null }) {
   const offset = circumference - (value / 100) * circumference
   const ringColor =
     value < 40 ? "stroke-green-500 dark:stroke-green-400" : value < 70 ? "stroke-amber-500 dark:stroke-amber-400" : "stroke-red-500 dark:stroke-red-400"
+  const glowColor =
+    value < 40 ? "drop-shadow-[0_0_6px_theme(colors.green.500)] dark:drop-shadow-[0_0_6px_theme(colors.green.400)]" :
+    value < 70 ? "drop-shadow-[0_0_6px_theme(colors.amber.500)] dark:drop-shadow-[0_0_6px_theme(colors.amber.400)]" :
+    "drop-shadow-[0_0_6px_theme(colors.red.500)] dark:drop-shadow-[0_0_6px_theme(colors.red.400)]"
 
   return (
-    <div className="relative h-11 w-11">
-      <svg width={44} height={44} viewBox="0 0 44 44">
+    <div className={cn("relative h-11 w-11", glowColor)}>
+      <svg width={44} height={44} viewBox="0 0 44 44" className="filter" style={{ '--circumference': circumference }}>
+        <defs>
+          <linearGradient id="shimmerGradient" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="hsl(var(--primary) / 0)" />
+            <stop offset="50%" stopColor="hsl(var(--primary) / 0.4)" />
+            <stop offset="100%" stopColor="hsl(var(--primary) / 0)" />
+          </linearGradient>
+        </defs>
         <circle
           cx={22}
           cy={22}
@@ -167,8 +206,23 @@ function PriorityRing({ score }: { score: number | null }) {
           strokeDashoffset={offset}
           className={cn(ringColor, "transition-all duration-500")}
         />
+        {value > 0 && (
+          <circle
+            cx={22}
+            cy={22}
+            r={radius}
+            fill="none"
+            strokeWidth={3.5}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference}
+            stroke="url(#chart-shimmer)"
+            className="animate-shimmer-sweep"
+            style={{ animationDelay: "100ms" }}
+          />
+        )}
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center text-xs font-bold">
+      <span className="absolute inset-0 flex items-center justify-center text-xs font-bold font-heading">
         {score == null ? "—" : value}
       </span>
     </div>
@@ -178,7 +232,7 @@ function PriorityRing({ score }: { score: number | null }) {
 function AiLabel() {
   return (
     <div className="mb-1 flex items-center gap-1.5">
-      <Sparkles className="h-3 w-3 text-[#960DF2]" aria-hidden="true" />
+      <Sparkles className="h-3 w-3 text-primary" aria-hidden="true" />
       <span className="text-xs font-medium text-muted-foreground">AI Explanation</span>
     </div>
   )
@@ -190,17 +244,6 @@ type FeatureImportance = {
 }
 
 
-
-const CHART_TOOLTIP_STYLE: Record<string, string | number> = {
-  backgroundColor: "#ffffff",
-  color: "hsl(var(--card-foreground))",
-  border: "1px solid hsl(var(--border))",
-  borderRadius: "8px",
-  boxShadow:
-    "0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)",
-  padding: "8px 12px",
-  fontSize: "12px",
-}
 
 function FeatureImportanceSection() {
   const [open, setOpen] = useState(false)
@@ -284,7 +327,7 @@ function FeatureImportanceSection() {
       <CardContent className="pt-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-[#960DF2]" />
+            <Sparkles className="h-4 w-4 text-primary" />
             <span className="text-sm font-semibold">How does the AI decide priority?</span>
           </div>
           <Button
@@ -308,7 +351,7 @@ function FeatureImportanceSection() {
             <p className="font-medium">Feature importance not available</p>
             <p className="mt-1">
               The ML API does not yet expose a <code className="text-xs">/feature-importance</code>{" "}
-              endpoint. This is a stretch goal for the team — once the Railsync-ML service
+              endpoint. This is a stretch goal for the team â€” once the Railsync-ML service
               adds that endpoint, this chart will render automatically.
             </p>
           </div>
@@ -320,22 +363,10 @@ function FeatureImportanceSection() {
                 data={data}
                 margin={{ top: 8, right: 16, left: 24, bottom: 8 }}
               >
-                <defs>
-                  <linearGradient
-                    id="featureImportanceGradient"
-                    x1="0"
-                    y1="0"
-                    x2="1"
-                    y2="0"
-                  >
-                    <stop offset="0%" stopColor="#960DF2" />
-                    <stop offset="100%" stopColor="#C084FC" />
-                  </linearGradient>
-                </defs>
                 <CartesianGrid
                   horizontal={false}
                   strokeDasharray="3 3"
-                  stroke="#e2e8f0"
+                  stroke="hsl(var(--border-subtle))"
                   strokeOpacity={0.6}
                 />
                 <XAxis
@@ -361,11 +392,20 @@ function FeatureImportanceSection() {
                   reversed
                 />
                 <Tooltip
-                  cursor={{ fill: "rgba(150, 13, 242, 0.04)" }}
-                  contentStyle={CHART_TOOLTIP_STYLE}
-                  itemStyle={{ color: "#0f172a", fontWeight: 500 }}
+                  cursor={{ fill: "hsl(var(--primary) / 0.06)" }}
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    color: "hsl(var(--card-foreground))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    boxShadow:
+                      "0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)",
+                    padding: "8px 12px",
+                    fontSize: "12px",
+                  }}
+                  itemStyle={{ color: "hsl(var(--card-foreground))", fontWeight: 500 }}
                   labelStyle={{
-                    color: "#64748b",
+                    color: "hsl(var(--muted-foreground))",
                     fontWeight: 600,
                     marginBottom: "2px",
                   }}
@@ -376,9 +416,10 @@ function FeatureImportanceSection() {
                 />
                 <Bar
                   dataKey="importance"
-                  fill="url(#featureImportanceGradient)"
+                  fill="url(#chart-gradient-primary)"
                   radius={[0, 6, 6, 0]}
                   animationDuration={600}
+                  className="shimmer-bar"
                 >
                   <LabelList
                     position="right"
@@ -597,19 +638,19 @@ export default function ScoredRequestsBoard() {
       key={opt.id}
       className={cn(
         "rounded-lg border p-4 space-y-3",
-        opt.is_recommended && "border-2 border-[#960DF2]"
+        opt.is_recommended && "border-2 border-primary"
       )}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold">{opt.option_label}</span>
         {opt.is_recommended && (
-          <Badge className="bg-[#960DF2] hover:bg-[#960DF2] text-white text-xs">
+          <Badge className="bg-primary hover:bg-primary/80 text-primary-foreground text-xs">
             Recommended
           </Badge>
         )}
       </div>
       <div className="text-sm text-muted-foreground">
-        <span suppressHydrationWarning>{formatDateTime(opt.adjusted_start)}</span> ·{" "}
+        <span suppressHydrationWarning>{formatDateTime(opt.adjusted_start)}</span> Â·{" "}
         {opt.adjusted_duration_mins ?? 0} min
       </div>
       <div className="flex items-center gap-2.5">
@@ -631,10 +672,10 @@ export default function ScoredRequestsBoard() {
   )
 
   function DelayRiskBadge({ risk }: { risk: string | null }) {
-    const { icon: Icon, label, className } = delayRiskMeta(risk)
+    const { icon: Icon, label, variant } = delayRiskMeta(risk)
     if (!label) return null
     return (
-      <Badge variant="outline" className={cn(className, "gap-1")}>
+      <Badge variant="outline" className={cn("gap-1")}>
         <Icon className="h-3.5 w-3.5" />
         {label}
       </Badge>
@@ -659,8 +700,8 @@ export default function ScoredRequestsBoard() {
       <Card
         key={row.id}
         className={cn(
-          "border-l-2 border-[#960DF2]",
-          variant === "safety_blocked" && "ring-2 ring-red-600/40"
+          "border-l-2 border-primary",
+          variant === "safety_blocked" && "ring-2 ring-destructive/40"
         )}
       >
         <CardContent className="pt-6 space-y-4">
@@ -668,15 +709,12 @@ export default function ScoredRequestsBoard() {
             <div className="space-y-1 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium">{row.work_type}</span>
-                <Badge variant="outline" className={safetyBadge(row.safety_criticality)}>
+                <Badge variant={safetyBadge(row.safety_criticality)}>
                   {row.safety_criticality}
                 </Badge>
                 <DepartmentLabel dept={row.department} />
                 {variant === "safety_blocked" && (
-                  <Badge
-                    variant="outline"
-                    className="text-red-700 dark:text-red-400 bg-red-500/10 border-red-600/20"
-                  >
+                  <Badge variant="destructive" className="gap-1">
                     <ShieldAlert className="h-3.5 w-3.5 mr-1" />
                     Safety blocked
                   </Badge>
@@ -693,7 +731,7 @@ export default function ScoredRequestsBoard() {
               {row.ai_explanation && (
                 <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-muted/50">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Sparkles className="h-3 w-3 text-[#960DF2]" />
+                    <Sparkles className="h-3 w-3 text-primary" />
                     <span className="text-xs font-medium text-muted-foreground">AI Explanation</span>
                   </div>
                   <p className="text-sm whitespace-pre-wrap">{row.ai_explanation}</p>
@@ -702,7 +740,7 @@ export default function ScoredRequestsBoard() {
               <p className="text-xs text-muted-foreground">
                 Requested start:{" "}
                 <span suppressHydrationWarning>{formatDateTime(row.requested_start)}</span>{" "}
-                · {row.requested_duration_mins} min
+                Â· {row.requested_duration_mins} min
               </p>
             </div>
             {variant === "scored" && (
@@ -760,7 +798,7 @@ export default function ScoredRequestsBoard() {
                 ? (
                     <div className="col-span-full rounded-lg border p-4 text-sm">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <Sparkles className="h-3 w-3 text-[#960DF2]" />
+                        <Sparkles className="h-3 w-3 text-primary" />
                         <span className="text-xs font-medium text-muted-foreground">View AI Plan</span>
                       </div>
                       <p className="whitespace-pre-wrap text-muted-foreground">{planText}</p>
@@ -787,17 +825,17 @@ export default function ScoredRequestsBoard() {
     const hasAI = tableOptions.length > 0 || row.ai_explanation
 
     return (
-      <Card key={row.id} className="border-l-2 border-[#960DF2]">
+      <Card key={row.id} className="border-l-2 border-primary">
         <CardContent className="pt-6 space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium">{row.work_type}</span>
-                <Badge variant="outline" className={safetyBadge(row.safety_criticality)}>
+                <Badge variant={safetyBadge(row.safety_criticality)}>
                   {row.safety_criticality}
                 </Badge>
                 <DepartmentLabel dept={row.department} />
-                <Badge variant="outline" className="text-blue-700 dark:text-blue-400 bg-blue-500/10 border-blue-600/20">
+                <Badge variant="secondary">
                   <Clock className="h-3.5 w-3.5 mr-1" />
                   {row.status}
                 </Badge>
@@ -813,7 +851,7 @@ export default function ScoredRequestsBoard() {
               {row.ai_explanation && (
                 <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-muted/50">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Sparkles className="h-3 w-3 text-[#960DF2]" />
+                    <Sparkles className="h-3 w-3 text-primary" />
                     <span className="text-xs font-medium text-muted-foreground">AI Explanation</span>
                   </div>
                   <p className="text-sm whitespace-pre-wrap">{row.ai_explanation}</p>
@@ -822,7 +860,7 @@ export default function ScoredRequestsBoard() {
               <p className="text-xs text-muted-foreground">
                 Requested start:{" "}
                 <span suppressHydrationWarning>{formatDateTime(row.requested_start)}</span>{" "}
-                · {row.requested_duration_mins} min
+                Â· {row.requested_duration_mins} min
               </p>
             </div>
             <div className="text-right shrink-0">
@@ -884,7 +922,7 @@ export default function ScoredRequestsBoard() {
                 ? (
                     <div className="col-span-full rounded-lg border p-4 text-sm">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <Sparkles className="h-3 w-3 text-[#960DF2]" />
+                        <Sparkles className="h-3 w-3 text-primary" />
                         <span className="text-xs font-medium text-muted-foreground">AI Analysis</span>
                       </div>
                       <p className="whitespace-pre-wrap text-muted-foreground">{row.ai_explanation}</p>
@@ -904,11 +942,11 @@ export default function ScoredRequestsBoard() {
           {hasAI && (
             <div className="border-t pt-4 space-y-3">
               <p className="text-sm font-medium">Approval Actions</p>
-              <div className="flex flex-wrap gap-2">
+<div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   onClick={() => handleApproval(row.id, "approved")}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="bg-success hover:bg-success/90"
                 >
                   <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
                   Approve
@@ -917,7 +955,7 @@ export default function ScoredRequestsBoard() {
                   size="sm"
                   variant="outline"
                   onClick={() => handleApproval(row.id, "rejected")}
-                  className="border-red-600 text-red-700 hover:bg-red-50"
+                  className="border-destructive text-destructive hover:bg-destructive/10"
                 >
                   <X className="h-3.5 w-3.5 mr-1.5" />
                   Reject
@@ -926,10 +964,10 @@ export default function ScoredRequestsBoard() {
                   size="sm"
                   variant="outline"
                   onClick={() => handleApproval(row.id, "modified")}
-                  className="border-amber-600 text-amber-700 hover:bg-amber-50"
+                  className="border-warning text-warning hover:bg-warning/10"
                 >
                   <Edit className="h-3.5 w-3.5 mr-1.5" />
-                  Modify &amp; Approve
+                  Modify & Approve
                 </Button>
               </div>
             </div>
@@ -1013,7 +1051,7 @@ export default function ScoredRequestsBoard() {
           <StatCard
             title="Pending Review"
             value={pending.length}
-            icon={<Clock className="h-5 w-5 text-blue-600" />}
+            icon={<Clock className="h-5 w-5 text-primary" />}
           />
           <StatCard
             title="Avg Priority Score"
@@ -1023,12 +1061,12 @@ export default function ScoredRequestsBoard() {
           <StatCard
             title="High Risk"
             value={highRiskCount}
-            icon={<AlertOctagon className="h-5 w-5 text-red-600" />}
+            icon={<AlertOctagon className="h-5 w-5 text-destructive" />}
           />
           <StatCard
             title="Safety Blocked"
             value={safetyBlocked.length}
-            icon={<ShieldAlert className="h-5 w-5 text-red-600" />}
+            icon={<ShieldAlert className="h-5 w-5 text-destructive" />}
           />
         </div>
       )}
@@ -1055,7 +1093,7 @@ export default function ScoredRequestsBoard() {
       ) : (
         <div className="space-y-8">
           <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-primary flex items-center gap-2">
               <Clock className="h-4 w-4" />
               Pending AI Analysis ({pending.length})
             </h2>
@@ -1063,9 +1101,9 @@ export default function ScoredRequestsBoard() {
               pending.map((row) => renderPendingCard(row))
             ) : (
               <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card/30 py-12">
-                <CheckCircle className="h-12 w-12 text-green-500/80" />
+                <CheckCircle className="h-12 w-12 text-success/80" />
                 <p className="text-muted-foreground">
-                  All caught up — no pending requests
+                  All caught up â€” no pending requests
                 </p>
               </div>
             )}
@@ -1073,11 +1111,11 @@ export default function ScoredRequestsBoard() {
 
           {safetyBlocked.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-red-700 dark:text-red-400 flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-destructive flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4" />
                 Safety blocked
               </h2>
-              <div className="space-y-3 border border-red-600/50 rounded-lg p-0.5">
+              <div className="space-y-3 border border-destructive/50 rounded-lg p-0.5">
                 {safetyBlocked.map((row) => renderRequestCard(row, "safety_blocked"))}
               </div>
             </div>

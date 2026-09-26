@@ -1,4 +1,4 @@
-import { Bot, Compass, Gauge, MapPin, type LucideIcon, Wrench } from "lucide-react";
+import { Bot, Compass, Gauge, type LucideIcon, Wrench } from "lucide-react";
 
 export type UserRole = "admin" | "maintenance" | "control" | "field";
 

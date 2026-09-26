@@ -1,40 +1,28 @@
 "use client"
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
+import { AsyncButton } from "@/components/ui/async-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
-import { Loader2, TrainFront } from "lucide-react"
+import { TrainFront } from "lucide-react"
 
 export function GoodsForecastPanel({
   corridorId,
 }: {
   corridorId: number | null
 }) {
-  const [loading, setLoading] = useState(false)
-
   const handleSimulate = async () => {
-    setLoading(true)
-    try {
-      const res = await fetch("/api/simulate-goods-forecast", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ corridorId }),
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        throw new Error(json?.error || "Failed to generate goods forecast")
-      }
-      toast.success("Goods forecast generated", {
-        description: `${json.count ?? "?"} forecast rows created across ${json.segments ?? "?"} segments for ${json.forecast_days ?? "?"} days.`,
-      })
-    } catch (err) {
-      toast.error("Failed to generate goods forecast", {
-        description: err instanceof Error ? err.message : "Unknown error",
-      })
-    } finally {
-      setLoading(false)
+    const res = await fetch("/api/simulate-goods-forecast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ corridorId }),
+    })
+    const json = await res.json()
+    if (!res.ok) {
+      throw new Error(json?.error || "Failed to generate goods forecast")
     }
+    toast.success("Goods forecast generated", {
+      description: `${json.count ?? "?"} forecast rows created across ${json.segments ?? "?"} segments for ${json.forecast_days ?? "?"} days.`,
+    })
   }
 
   return (
@@ -49,21 +37,16 @@ export function GoodsForecastPanel({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Button
+        <AsyncButton
           variant="outline"
           size="sm"
           onClick={handleSimulate}
-          disabled={loading}
+          successMessage="Goods forecast generated"
+          errorMessage="Failed to generate goods forecast"
+          icon={<TrainFront className="h-4 w-4" />}
         >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-              Simulating…
-            </>
-          ) : (
-            <>Simulate Goods Forecast (30 days)</>
-          )}
-        </Button>
+          Simulate Goods Forecast (30 days)
+        </AsyncButton>
       </CardContent>
     </Card>
   )

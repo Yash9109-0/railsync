@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { analyzeUrgency, explainPlanOption, explainWhatIf } from '@/lib/llm'
+import { createNotificationsForUsers, getControlOfficers } from '@/lib/notifications'
 
 const ML_BASE_URL = process.env.ML_API_URL || 'https://railsync-ml.onrender.com'
 const LOW_SAMPLE = 10
@@ -23,7 +24,7 @@ export async function processBlockRequest(block_request_id: string) {
 
   // 1. Fetch block_request row
   const { data: req, error: fetchErr } = await sb.from('block_requests')
-    .select('segment_id, work_type, requested_start, requested_duration_mins, safety_criticality, work_description, justification')
+    .select('segment_id, work_type, requested_start, requested_duration_mins, safety_criticality, work_description, justification, department')
     .eq('id', block_request_id).single<ReqRow>()
   if (fetchErr || !req) {
     console.error('[block-processing] Fetch error:', fetchErr?.message)
@@ -124,6 +125,24 @@ export async function processBlockRequest(block_request_id: string) {
     await sb.from('block_requests').update({ priority_score: rec.priority_score, delay_risk: rec.delay_risk, ai_explanation: rec.explanation, status: 'scored' }).eq('id', block_request_id)
   }
   console.log('[block-processing] Updated request status:', over240 ? 'safety_blocked' : 'scored')
+
+  // 11. Notify Control officers if delay_risk is High
+  if (rec.delay_risk === 'High') {
+    try {
+      const controlOfficers = await getControlOfficers()
+      if (controlOfficers.length > 0) {
+        await createNotificationsForUsers(
+          controlOfficers,
+          'High Delay Risk Block Request',
+          `Block request ${block_request_id.slice(0, 8)} (${req.work_type}) on segment ${segment} has been scored with HIGH delay risk. Review recommended plan.`,
+          `/dashboard/control?request=${block_request_id}`
+        )
+        console.log('[block-processing] Notified control officers of High delay risk')
+      }
+    } catch (notifyErr) {
+      console.error('[block-processing] Failed to notify control officers:', notifyErr)
+    }
+  }
 
   return { block_request_id, success: true }
 }

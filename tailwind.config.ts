@@ -2,6 +2,22 @@ import type { Config } from "tailwindcss";
 import animate from "tailwindcss-animate";
 import plugin from "tailwindcss/plugin";
 
+/**
+ * ════════════════════════════════════════════════════════════════════════════
+ * RailSync Design System — Tailwind theme
+ * ════════════════════════════════════════════════════════════════════════════
+ * Token VALUES live in `app/globals.css` as CSS custom properties (so they can
+ * theme at runtime); this file only wires them into Tailwind utilities.
+ *
+ * The scales below intentionally REPLACE Tailwind's defaults (they are declared
+ * at the theme root, not inside `extend`) so off-system values such as `p-13`,
+ * `duration-300` or `shadow-2xl` cannot be generated at all:
+ *
+ *   1. Typography — 1.25 modular scale, 12px → 39px, 4 font weights
+ *   2. Spacing    — 4px base grid (every step is a multiple of 4px)
+ *   3. Elevation  — 4 purple-tinted shadow levels (sm · md · lg · xl)
+ *   4. Motion     — 3 durations (fast · base · slow) + 1 easing curve
+ */
 export default {
   darkMode: ["class"],
   content: [
@@ -11,16 +27,86 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
+    /* ── 2. Spacing grid · 4px base ─────────────────────────────────────────
+       Steps 1–16 are the canonical layout rhythm (4, 8, 12, 16, 20, 24, 28,
+       32, 36, 40, 44, 48, 56, 64px); 20–96 exist for fixed component sizes
+       (icons, avatars, panels). Sub-4px steps (0.5, 1.5, 2.5, 3.5) are
+       deliberately absent — nothing on the grid can render at 2/6/10/14px. */
+    spacing: {
+      px: "1px",
+      0: "0px",
+      1: "0.25rem", // 4
+      2: "0.5rem", // 8
+      3: "0.75rem", // 12
+      4: "1rem", // 16
+      5: "1.25rem", // 20
+      6: "1.5rem", // 24
+      7: "1.75rem", // 28
+      8: "2rem", // 32
+      9: "2.25rem", // 36
+      10: "2.5rem", // 40
+      11: "2.75rem", // 44
+      12: "3rem", // 48
+      14: "3.5rem", // 56
+      16: "4rem", // 64
+      20: "5rem", // 80
+      24: "6rem", // 96
+      28: "7rem", // 112
+      32: "8rem", // 128
+      36: "9rem", // 144
+      40: "10rem", // 160
+      44: "11rem", // 176
+      48: "12rem", // 192
+      56: "14rem", // 224
+      64: "16rem", // 256
+      72: "18rem", // 288
+      80: "20rem", // 320
+      96: "24rem", // 384
+    },
+
+    /* ── 1. Typography scale · ratio 1.25 (12 / 14 / 16 / 20 / 25 / 31 / 39)
+         Line-heights are multiples of 4px to sit on the same grid. ── */
+    fontSize: {
+      xs: ["0.75rem", { lineHeight: "1rem" }], // 12 / 16
+      sm: ["0.875rem", { lineHeight: "1.25rem" }], // 14 / 20
+      base: ["1rem", { lineHeight: "1.5rem" }], // 16 / 24
+      lg: ["1.25rem", { lineHeight: "1.75rem" }], // 20 / 28
+      xl: ["1.5625rem", { lineHeight: "2rem" }], // 25 / 32
+      "2xl": ["1.9375rem", { lineHeight: "2.5rem" }], // 31 / 40
+      "3xl": ["2.4375rem", { lineHeight: "3rem" }], // 39 / 48
+    },
+
+    /* ── 1b. Font weights — headings semibold/bold, labels medium, body normal.
+         Max two emphasis weights per screen. ── */
+    fontWeight: {
+      normal: "400",
+      medium: "500",
+      semibold: "600",
+      bold: "700",
+    },
+
     extend: {
       /* ── Font Families (Inter) ── */
       fontFamily: {
         sans: ["var(--font-sans)"],
-        heading: ["var(--font-heading)"],
+        heading: ["var(--font-sans)"],
         mono: ["var(--font-mono)"],
       },
 
       /* ── Color Palette ── */
       colors: {
+        /* ── Surface layers ── */
+        surface: {
+          1: "hsl(var(--surface-1))",
+          2: "hsl(var(--surface-2))",
+          3: "hsl(var(--surface-3))",
+        },
+
+        /* ── Border tokens ── */
+        "border-subtle": "hsl(var(--border-subtle))",
+        "border-default": "hsl(var(--border-default))",
+        "border-strong": "hsl(var(--border-strong))",
+
         /* ── Neutral grays — text hierarchy ── */
         gray: {
           50: "hsl(var(--gray-50))",
@@ -63,8 +149,8 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
-          hover: "hsl(var(--primary-hover))",  /* #F3E5FE — lighter tint */
-          active: "hsl(var(--primary-active))", /* #6D09B13 — darker shade */
+          hover: "hsl(var(--primary-hover))",
+          active: "hsl(var(--primary-active))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -73,22 +159,22 @@ export default {
 
         /* ── Semantic colors ── */
         success: {
-          DEFAULT: "hsl(var(--success))",           /* #1FA65C */
+          DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
-          bg: "hsl(var(--success-bg))",             /* light tint for badges */
+          bg: "hsl(var(--success-bg))",
         },
         warning: {
-          DEFAULT: "hsl(var(--warning))",           /* #F2A60D */
+          DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
-          bg: "hsl(var(--warning-bg))",             /* light tint for badges */
+          bg: "hsl(var(--warning-bg))",
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",       /* #F2340D */
+          DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
-          bg: "hsl(var(--destructive-bg))",         /* light tint for badges */
+          bg: "hsl(var(--destructive-bg))",
         },
         danger: {
-          DEFAULT: "hsl(var(--destructive))",       /* alias → same as destructive */
+          DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
           bg: "hsl(var(--destructive-bg))",
         },
@@ -128,36 +214,44 @@ export default {
         "2xl": "var(--radius-2xl)",
         full: "var(--radius-full)",
       },
+    },
 
-      /* ── Shadows ── */
-      boxShadow: {
-        card: "var(--shadow-card)",
-        elegant: "0 4px 6px -1px var(--tw-shadow-color)",
-      },
+    /* ── 3. Elevation system · 4 purple-tinted levels (values in globals.css)
+         sm = resting card · md = hover/raised · lg = modal/dropdown
+         xl = the single most important element on a page, used sparingly ── */
+    boxShadow: {
+      none: "none",
+      DEFAULT: "var(--shadow-sm)",
+      sm: "var(--shadow-sm)",
+      md: "var(--shadow-md)",
+      lg: "var(--shadow-lg)",
+      xl: "var(--shadow-xl)",
+    },
+
+    /* ── 4. Motion · one easing curve, three durations ── */
+    transitionDuration: {
+      DEFAULT: "var(--duration-base)",
+      fast: "var(--duration-fast)",
+      base: "var(--duration-base)",
+      slow: "var(--duration-slow)",
+    },
+    transitionTimingFunction: {
+      DEFAULT: "var(--ease-standard)",
+      standard: "var(--ease-standard)",
+    },
+    /* Radix (dialog/dropdown/select/toast) enter-exit animations read this key,
+       so panel motion follows the same tokens as CSS transitions. */
+    animationDuration: {
+      DEFAULT: "var(--duration-base)",
+      fast: "var(--duration-fast)",
+      base: "var(--duration-base)",
+      slow: "var(--duration-slow)",
     },
   },
   plugins: [
     animate,
-    /* ── Page Container utility ── */
-    plugin(({ addUtilities }) => {
-      addUtilities({
-        ".page-container": {
-          width: "100%",
-          marginLeft: "auto",
-          marginRight: "auto",
-          paddingLeft: "1rem",
-          paddingRight: "1rem",
-          maxWidth: "72rem",
-          "@media (min-width: 640px)": {
-            paddingLeft: "1.5rem",
-            paddingRight: "1.5rem",
-          },
-          "@media (min-width: 1024px)": {
-            maxWidth: "72rem",
-          },
-        },
-      });
-    }),
+    /* ── Note: `.page-container` lives in `app/globals.css` (@layer utilities)
+       so the design system keeps a single source of truth. ── */
     /* ── Component & variant plugins ── */
     plugin(({ addVariant }) => {
       addVariant("data-open", [

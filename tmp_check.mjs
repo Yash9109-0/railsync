@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
 const sb = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
 )
 
 const id = process.argv[2] ?? '865c593a-b23c-44d3-863b-18874d90902a'

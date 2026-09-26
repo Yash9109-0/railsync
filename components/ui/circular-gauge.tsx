@@ -17,6 +17,14 @@ const GAUGE_STROKE: Record<GaugeColor, string> = {
   muted: "hsl(var(--muted))",
 }
 
+const GAUGE_GLOW: Record<GaugeColor, string> = {
+  primary: "drop-shadow-[0_0_8px_hsl(var(--primary)/0.6)]",
+  success: "drop-shadow-[0_0_8px_hsl(var(--success)/0.6)]",
+  warning: "drop-shadow-[0_0_8px_hsl(var(--warning)/0.6)]",
+  destructive: "drop-shadow-[0_0_8px_hsl(var(--destructive)/0.6)]",
+  muted: "drop-shadow-[0_0_8px_hsl(var(--muted)/0.4)]",
+}
+
 interface CircularGaugeProps {
   value: number | null
   max?: number
@@ -53,7 +61,7 @@ function CircularGauge({
         className,
       )}
     >
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={cn(GAUGE_GLOW[color], "filter")}>
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -74,11 +82,11 @@ function CircularGauge({
           strokeDashoffset={offset}
           stroke={GAUGE_STROKE[color]}
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          className="transition-[stroke-dashoffset] duration-300 ease-out"
+          className="transition-[stroke-dashoffset] duration-slow"
         />
       </svg>
       <div className="flex flex-col items-center">
-        <span className="text-lg font-bold tabular-nums">{display}</span>
+        <span className="text-lg font-semibold tabular-nums">{display}</span>
         {label ? (
           <span className="text-xs text-muted-foreground">{label}</span>
         ) : null}

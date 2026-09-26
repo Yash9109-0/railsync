@@ -15,8 +15,11 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip"
 import { toast } from "sonner"
-import { BarChart, Loader2, RefreshCw } from "lucide-react"
+import { BarChart, Loader2, RefreshCw, Activity, HelpCircle } from "lucide-react"
 import GoodsForecastPanel from "./GoodsForecastPanel"
+import { ErrorState } from "@/components/ui/ErrorState"
+import { EmptyState } from "@/components/ui/EmptyState"
+import { Skeleton } from "@/components/ui/skeleton"
 
 const SEGMENT_NAMES = ["A-B", "B-C", "C-D", "D-E"]
 
@@ -134,7 +137,7 @@ function HeatmapCell({ segName, date, count, traffic, row }: HeatmapCellProps) {
       <TooltipTrigger asChild>
         <div
           className={cn(
-            "flex h-10 w-10 items-center justify-center rounded-md text-xs font-medium text-white shadow-xs transition-transform hover:scale-105",
+            "flex h-10 w-10 items-center justify-center rounded-md text-xs font-medium text-white shadow-sm transition-transform duration-fast hover:scale-105",
             traffic.bg,
           )}
         >
@@ -179,6 +182,7 @@ export function CorridorAvailability() {
   const [segmentMap, setSegmentMap] = useState<Record<number, string>>({})
   const [segmentCapacity, setSegmentCapacity] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const { selectedCorridorId } = useCorridor()
 
@@ -188,8 +192,9 @@ export function CorridorAvailability() {
     if (!startDate || !endDate) return
 
     const fetchData = async () => {
-      setLoading(true)
-      try {
+       setLoading(true)
+      setError(null)
+       try {
         let segmentsQuery = supabase
           .from("segments")
           .select("id, name")
@@ -252,6 +257,7 @@ export function CorridorAvailability() {
         toast.error("Failed to load corridor data", {
           description: err instanceof Error ? err.message : "Unknown error",
         })
+        setError(err instanceof Error ? err.message : "Unknown error")
       } finally {
         setLoading(false)
       }
@@ -317,7 +323,7 @@ export function CorridorAvailability() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-4 items-end">
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <label
                 className="text-sm font-medium leading-none"
                 htmlFor="start-date"
@@ -331,7 +337,7 @@ export function CorridorAvailability() {
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <label
                 className="text-sm font-medium leading-none"
                 htmlFor="end-date"
@@ -353,12 +359,12 @@ export function CorridorAvailability() {
             >
               {loading ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   Loading…
                 </>
               ) : (
                 <>
-                  <RefreshCw className="h-4 w-4 mr-1.5" />
+                  <RefreshCw className="h-4 w-4 mr-2" />
                   Refresh
                 </>
               )}
@@ -369,7 +375,7 @@ export function CorridorAvailability() {
             {TRAFFIC_LEVELS.map((l) => {
               const t = trafficFor(l.count)
               return (
-                <div key={t.level} className="flex items-center gap-1.5">
+                <div key={t.level} className="flex items-center gap-2">
                   <div className={cn("h-4 w-4 rounded", t.bg)} />
                   <span className="font-medium">{t.label}</span>
                   <span className="text-muted-foreground">({l.range})</span>
@@ -378,16 +384,21 @@ export function CorridorAvailability() {
             })}
           </div>
 
-          {loading && dateRange.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-              <p>Loading corridor data…</p>
-            </div>
-          ) : segmentIds.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <p>No segments found.</p>
-            </div>
-          ) : (
+           {error ? (
+             <ErrorState onRetry={handleRefresh} />
+           ) : loading && dateRange.length === 0 ? (
+             <div className="grid grid-cols-7 gap-1">
+               {Array.from({ length: 4 * 7 }).map((_, i) => (
+                 <Skeleton key={i} className="h-10 w-full rounded-md" />
+               ))}
+             </div>
+           ) : segmentIds.length === 0 ? (
+             <EmptyState
+               icon={Activity}
+               title="No segments found"
+               description="No segments are configured for the selected corridor."
+             />
+           ) : (
             <TooltipProvider delayDuration={350}>
               <div className="overflow-x-auto">
                 <div
@@ -418,10 +429,10 @@ export function CorridorAvailability() {
                      const passengerCount = passengerPerSegment[segId] ?? 0
                      const capacityPct = segmentCapacity[segId]
                      const capacityAdjusted = capacityPct != null && capacityPct !== 20
-                     const capacityBadgeClass =
-                       capacityPct < 20
-                         ? "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-600/20"
-                         : "text-green-700 dark:text-green-400 bg-green-500/10 border-green-600/20"
+const capacityBadgeVariant =
+                        capacityPct < 20
+                          ? "warning"
+                          : "success"
                      return (
                        <React.Fragment key={segId}>
                          <div className="flex h-10 items-center gap-2 text-sm font-medium">
@@ -429,25 +440,26 @@ export function CorridorAvailability() {
                            <span className="text-xs text-muted-foreground">
                              ({passengerCount} passengers)
                            </span>
-                           {capacityAdjusted && (
-                             <Tooltip>
-                               <TooltipTrigger asChild>
-                                 <Badge
-                                   variant="outline"
-                                   className={cn("text-xs", capacityBadgeClass)}
-                                 >
-                                   Capacity: {capacityPct}% (adjusted from history)
-                                 </Badge>
-                               </TooltipTrigger>
-                               <TooltipContent side="top" className="max-w-xs">
-                                 <p>
-                                   This segment's scheduling capacity has been
-                                   automatically adjusted based on past execution
-                                   performance.
-                                 </p>
-                               </TooltipContent>
-                             </Tooltip>
-                           )}
+{capacityAdjusted && (
+                               <Tooltip>
+                                 <TooltipTrigger asChild>
+                                   <Badge
+                                     variant={capacityBadgeVariant}
+                                     className="text-xs flex items-center gap-1"
+                                   >
+                                     Capacity: {capacityPct}% (adjusted from history)
+                                     <HelpCircle className="h-3 w-3" aria-hidden="true" />
+                                   </Badge>
+                                 </TooltipTrigger>
+                                 <TooltipContent side="top" className="max-w-xs">
+                                   <p>
+                                     This segment's scheduling capacity has been
+                                     automatically adjusted based on past execution
+                                     performance.
+                                   </p>
+                                 </TooltipContent>
+                               </Tooltip>
+                             )}
                          </div>
                         {dateRange.map((date) => {
                           const cell = cellFor(segId, date)

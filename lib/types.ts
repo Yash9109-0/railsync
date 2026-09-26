@@ -6,6 +6,16 @@ export interface Profile {
   created_at: string
 }
 
+export interface Notification {
+  id: string
+  user_id: string
+  title: string
+  body: string | null
+  link: string | null
+  read: boolean
+  created_at: string
+}
+
 export interface Station {
   id: number
   name: string
@@ -199,6 +209,7 @@ export interface BlockPlanHorizonItem {
 
 export type Tables =
   | { table: 'profiles'; row: Profile }
+  | { table: 'notifications'; row: Notification }
   | { table: 'stations'; row: Station }
   | { table: 'segments'; row: Segment }
   | { table: 'timetable'; row: TimetableEntry }

@@ -69,9 +69,9 @@ export async function POST(request: Request) {
       originalDuration,
     )
 
-    const baselinePriority = calculatePriority(blockRequest, baselineDate, baselineDuration, segmentName)
-    const weekendPriority = calculatePriority(blockRequest, weekendDate, weekendDuration, segmentName)
-    const nightPriority = calculatePriority(blockRequest, nightDate, nightDuration, segmentName)
+    const baselinePriority = calculatePriority(blockRequest, baselineDate, baselineDuration)
+    const weekendPriority = calculatePriority(blockRequest, weekendDate, weekendDuration)
+    const nightPriority = calculatePriority(blockRequest, nightDate, nightDuration)
 
     const baselineRisk = getRiskLabel(baselinePriority)
     const weekendRisk = getRiskLabel(weekendPriority)
@@ -172,7 +172,6 @@ function calculatePriority(
   request: any,
   start: Date,
   durationMins: number,
-  segmentName: string,
 ): number {
   let score = 50
 

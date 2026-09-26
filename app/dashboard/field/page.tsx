@@ -19,6 +19,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  EmptyState,
   Input,
   Skeleton,
   Table,
@@ -28,8 +29,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui"
+import type { User } from "@supabase/supabase-js";
 import { DashboardPageHeader } from "@/components/dashboard-page-header"
 import { Loader2, MapPin, PlayCircle, RefreshCw, Upload, Clock } from "lucide-react"
+import Image from "next/image"
 import type {
   BlockRequest,
   BlockRequestStatus,
@@ -37,6 +40,150 @@ import type {
   ExecutionLog,
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { CheckCircle, AlertTriangle } from "lucide-react"
+
+interface WeeklyProgressProps {
+  selectedCorridorId: number | null
+}
+
+function WeeklyProgressCard({ selectedCorridorId }: WeeklyProgressProps) {
+  const [completedThisWeek, setCompletedThisWeek] = useState(0)
+  const [avgVariance, setAvgVariance] = useState<number | null>(null)
+  const [inProgressCount, setInProgressCount] = useState(0)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      setLoading(true)
+      const supabase = createClient()
+
+      try {
+        const weekAgo = new Date()
+        weekAgo.setDate(weekAgo.getDate() - 7)
+        weekAgo.setHours(0, 0, 0, 0)
+
+        let segmentIds: number[] | null = null
+        if (selectedCorridorId != null) {
+          const { data: segData } = await supabase
+            .from("segments")
+            .select("id")
+            .eq("corridor_id", selectedCorridorId)
+          segmentIds = (segData ?? []).map((s) => s.id)
+        }
+
+        const baseQuery = supabase
+          .from("block_requests")
+          .select("id, status, requested_duration_mins, created_at, segment_id")
+          .order("created_at", { ascending: false })
+
+        const scopedQuery = segmentIds?.length
+          ? baseQuery.in("segment_id", segmentIds)
+          : baseQuery
+
+        const { data: requests } = await scopedQuery
+
+        if (!requests || cancelled) return
+
+        const executedThisWeek = requests.filter(
+          (r) =>
+            r.status === "executed" &&
+            new Date(r.created_at) >= weekAgo
+        )
+        const inProgress = requests.filter((r) => r.status === "in_progress")
+
+        if (cancelled) return
+        setCompletedThisWeek(executedThisWeek.length)
+        setInProgressCount(inProgress.length)
+
+        if (executedThisWeek.length > 0) {
+          const { data: logs } = await supabase
+            .from("execution_logs")
+            .select("block_request_id, actual_start, actual_end")
+            .in("block_request_id", executedThisWeek.map((r) => r.id))
+            .eq("status", "completed")
+
+          if (!cancelled && logs) {
+            let totalVariance = 0
+            let countWithVariance = 0
+            for (const log of logs) {
+              const req = executedThisWeek.find((r) => r.id === log.block_request_id)
+              if (req && log.actual_start && log.actual_end && req.requested_duration_mins) {
+                const actualMins = Math.round(
+                  (Date.parse(log.actual_end) - Date.parse(log.actual_start)) / 60000
+                )
+                totalVariance += actualMins - req.requested_duration_mins
+                countWithVariance++
+              }
+            }
+            if (countWithVariance > 0) {
+              setAvgVariance(Math.round(totalVariance / countWithVariance))
+            }
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setCompletedThisWeek(0)
+          setAvgVariance(null)
+          setInProgressCount(0)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    load()
+    return () => { cancelled = true }
+  }, [selectedCorridorId])
+
+  const statItems = [
+    {
+      label: "Completed This Week",
+      value: loading ? "—" : String(completedThisWeek),
+      icon: <CheckCircle className="h-4 w-4 text-success" />,
+      desc: "Work items executed",
+    },
+    {
+      label: "Avg Variance",
+      value: loading ? "—" : avgVariance === null ? "—" : `${avgVariance >= 0 ? "+" : ""}${avgVariance} min`,
+      icon: <Clock className="h-4 w-4 text-primary" />,
+      desc: avgVariance === null ? "No data" : avgVariance > 0 ? "Over planned" : avgVariance < 0 ? "Under planned" : "On time",
+    },
+    {
+      label: "In Progress",
+      value: loading ? "—" : String(inProgressCount),
+      icon: <AlertTriangle className="h-4 w-4 text-warning" />,
+      desc: "Currently being worked",
+    },
+  ]
+
+  return (
+    <Card className="bg-gradient-card border border-border/50">
+      <CardContent className="py-3">
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-2">
+          <span className="font-medium text-sm">This Week's Progress</span>
+          {loading && <Loader2 className="h-3 w-3 animate-spin" />}
+        </div>
+        <div className="grid grid-cols-3 gap-3 sm:gap-4">
+          {statItems.map((item) => (
+            <div
+              key={item.label}
+              className="flex items-center gap-2 p-2 rounded-lg bg-card border border-border/50 hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex-shrink-0">{item.icon}</div>
+              <div className="min-w-0">
+                <p className="text-xl font-bold tabular-nums font-heading leading-tight">{item.value}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{item.label}</p>
+                <p className="text-[10px] text-muted-foreground/70 truncate">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 interface SegmentInfo {
   name: string
@@ -55,6 +202,7 @@ const TOUCH_TARGET = "min-h-[44px] min-w-[44px]"
 
 export default function FieldPage() {
   const { selectedCorridorId } = useCorridor()
+  const [user, setUser] = useState<User | null>(null)
   const [approved, setApproved] = useState<BlockRequestRow[]>([])
   const [inProgress, setInProgress] = useState<BlockRequestRow[]>([])
   const [completed, setCompleted] = useState<BlockRequestRow[]>([])
@@ -123,6 +271,11 @@ export default function FieldPage() {
   }
 
   useEffect(() => {
+    const loadUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setUser(data.user ?? null);
+    };
+    loadUser();
     fetchAll()
     const id = setInterval(fetchAll, POLL_INTERVAL_MS)
     return () => clearInterval(id)
@@ -337,20 +490,20 @@ export default function FieldPage() {
     }
     if (variance < 0) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
+        <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2.5 py-0.5 text-xs font-medium text-success">
           Saved {Math.abs(variance)} min
         </span>
       )
     }
     if (variance > 0) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/30 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:text-red-300">
+        <span className="inline-flex items-center gap-1 rounded-full bg-destructive-bg px-2.5 py-0.5 text-xs font-medium text-destructive">
           Over by {variance} min
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
+      <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2.5 py-0.5 text-xs font-medium text-success">
         On time
       </span>
     )
@@ -359,10 +512,13 @@ export default function FieldPage() {
   const ImageThumb = ({ url }: { url: string | null }) =>
     url ? (
       <a href={url} target="_blank" rel="noreferrer" className="inline-block">
-        <img
+        <Image
           src={url}
           alt="work site"
-          className="h-10 w-10 rounded object-cover ring-1 ring-border"
+          width={40}
+          height={40}
+          className="rounded object-cover ring-1 ring-border"
+          loading="lazy"
         />
       </a>
     ) : (
@@ -370,11 +526,12 @@ export default function FieldPage() {
     )
 
   return (
-    <div className="space-y-8 bg-white min-h-screen">
+    <div className="space-y-8 min-h-screen">
       <DashboardPageHeader
         icon={MapPin}
         title="Field Execution Dashboard"
         description="Start approved work, complete it with site photos and a location, and review execution performance."
+        userName={user?.email?.split("@")[0] || "User"}
         action={
           <Button
             variant="outline"
@@ -395,6 +552,8 @@ export default function FieldPage() {
           </Button>
         }
       />
+
+      <WeeklyProgressCard selectedCorridorId={selectedCorridorId} />
 
       {/* Section 1 — Approved */}
       <Card>
@@ -444,8 +603,14 @@ export default function FieldPage() {
                   : approved.length === 0
                     ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
-                          No approved requests waiting.
+                        <TableCell colSpan={6} className="py-8">
+                          <EmptyState
+                            illustrationSrc="maintenance-all-clear.svg"
+                            illustrationAlt="All caught up - no approved requests"
+                            title="All caught up!"
+                            description="No approved requests waiting — you're all caught up!"
+                            className="py-4"
+                          />
                         </TableCell>
                       </TableRow>
                     )
@@ -471,6 +636,7 @@ export default function FieldPage() {
                                 "bg-primary hover:bg-primary/90 text-primary-foreground",
                                 TOUCH_TARGET,
                               )}
+                              data-tour="start-work-btn"
                             >
                               {actingId === r.id ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -516,11 +682,14 @@ export default function FieldPage() {
               <TableBody>
                 {inProgress.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="py-8 text-center text-sm text-muted-foreground"
-                    >
-                      No work in progress.
+                    <TableCell colSpan={5} className="py-8">
+                      <EmptyState
+                        illustrationSrc="field-empty-progress.svg"
+                        illustrationAlt="No work in progress"
+                        title="No work in progress"
+                        description="Nothing to complete right now. Start approved work to see it here."
+                        className="py-4"
+                      />
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -549,6 +718,7 @@ export default function FieldPage() {
                               "bg-success hover:bg-success/90 text-success-foreground",
                               TOUCH_TARGET,
                             )}
+                            data-tour="complete-work-btn"
                           >
                             Complete Work
                           </Button>
@@ -616,11 +786,14 @@ export default function FieldPage() {
                   : completed.length === 0
                     ? (
                       <TableRow>
-                        <TableCell
-                          colSpan={7}
-                          className="py-8 text-center text-sm text-muted-foreground"
-                        >
-                          No completed work yet.
+                        <TableCell colSpan={7} className="py-8">
+                          <EmptyState
+                            illustrationSrc="maintenance-all-clear.svg"
+                            illustrationAlt="No completed work yet"
+                            title="No completed work yet"
+                            description="Finish a job to see it here."
+                            className="py-4"
+                          />
                         </TableCell>
                       </TableRow>
                     )
