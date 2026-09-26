@@ -179,7 +179,7 @@ function PriorityRing({ score }: { score: number | null }) {
 
   return (
     <div className={cn("relative h-11 w-11", glowColor)}>
-      <svg width={44} height={44} viewBox="0 0 44 44" className="filter" style={{ '--circumference': circumference }}>
+      <svg width={44} height={44} viewBox="0 0 44 44" className="filter" style={{ '--circumference': circumference } as React.CSSProperties}>
         <defs>
           <linearGradient id="shimmerGradient" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="hsl(var(--primary) / 0)" />

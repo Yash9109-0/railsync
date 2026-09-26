@@ -64,7 +64,9 @@ export function EmptyState({
   const displayTitle = title || contextMessage.title;
   const displayDescription = description || (hasAnyData ? contextMessage.description : "Get started by adding your first item.");
 
-  const illustrationSize = illustrationSrc ? ILLUSTRATION_SIZES[illustrationSrc.split('/').pop() || ''] ?? { width: 280, height: 200 } : null;
+  const illustrationSize = illustrationSrc
+    ? ILLUSTRATION_SIZES[illustrationSrc.split('/').pop() || ''] ?? { width: 280, height: 200 }
+    : { width: 280, height: 200 };
 
   return (
     <div

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useCorridor } from "@/context/CorridorContext"
+import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import {
   Badge,
@@ -418,7 +419,7 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
               {horizonTypeIcon(horizon.horizon_type)}
               {cap(horizon.horizon_type)}
             </Badge>
-            <Badge className={statusBadge.className}>{statusBadge.label}</Badge>
+            <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
             <span className="text-sm font-medium text-muted-foreground">
               {fmtDateRangeShort(horizon.horizon_start, horizon.horizon_end)}
             </span>

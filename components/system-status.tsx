@@ -104,7 +104,7 @@ export function SystemStatus() {
             "h-3.5 w-3.5 flex-shrink-0 text-muted-foreground transition-transform",
             expanded && "rotate-180",
             "hidden md:block",
-            collapsed && "md:hidden"
+            !expanded && "md:hidden"
           )}
           aria-hidden="true"
         />

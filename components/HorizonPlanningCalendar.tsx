@@ -107,7 +107,7 @@ function chipStatusClass(status: "scheduled" | "deferred"): string {
   return "bg-warning/10 text-warning border-warning/20 dark:bg-warning/20 dark:text-warning dark:border-warning/30"
 }
 
-function getHorizonTypeBadgeClass(type: "weekly" | "monthly"): string {
+function getHorizonTypeBadgeClass(type: "weekly" | "monthly"): "default" | "success" {
   return type === "weekly" ? "default" : "success"
 }
 
@@ -698,7 +698,7 @@ export default function HorizonPlanningCalendar() {
                 {h.solver_used === 'cp-sat' ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Badge variant="primary" className="gap-1">
+                      <Badge variant="success" className="gap-1">
                         Optimal (CP-SAT)
                         <HelpCircle className="h-3 w-3" aria-hidden="true" />
                       </Badge>

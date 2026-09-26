@@ -39,6 +39,8 @@ export function SearchInput({
     }
   }, [])
 
+  const { className: _propsClassName, ...restProps } = props as React.InputHTMLAttributes<HTMLInputElement>
+
   return (
     <div className={cn("relative w-full max-w-xs", className)}>
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -47,8 +49,8 @@ export function SearchInput({
         placeholder={placeholder}
         value={internalValue}
         onChange={(e) => handleChange(e.target.value)}
-        className={cn("pl-9 pr-9", props.className)}
-        {...props}
+        className={cn("pl-9 pr-9", _propsClassName)}
+        {...restProps}
       />
       {internalValue && (
         <button

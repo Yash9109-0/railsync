@@ -7,7 +7,6 @@ export async function GET() {
     const res = await fetch(`${ML_BASE_URL}/feature-importance`, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
-      cache: 'no-store',
       next: { revalidate: 0 },
     })
 

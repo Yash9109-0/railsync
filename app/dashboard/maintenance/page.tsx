@@ -1045,6 +1045,7 @@ export default function MaintenancePage() {
                 <EmptyState
                   illustrationSrc="maintenance-all-clear.svg"
                   illustrationAlt="All clear - no defects"
+                  title="No defects reported"
                   context="no-requests"
                   hasAnyData={false}
                 />
@@ -1280,6 +1281,7 @@ export default function MaintenancePage() {
                 <EmptyState
                   illustrationSrc="maintenance-all-clear.svg"
                   illustrationAlt="All clear - no requests"
+                  title="No requests submitted"
                   context="no-requests"
                   hasAnyData={false}
                 />
@@ -1316,6 +1318,7 @@ export default function MaintenancePage() {
                   {filteredRequests.length === 0 ? (
                     <EmptyState
                       icon={Search}
+                      title="No matching requests"
                       context="no-data"
                       hasAnyData={requests.length > 0}
                     />
