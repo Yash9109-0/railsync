@@ -133,7 +133,8 @@ export async function generateHorizonPlan(
     };
 
      console.log("[optimizer] Calling CP-SAT Solver API...");
-    const ML_API_URL = process.env.ML_API_URL || 'https://YOUR-RENDER-URL.onrender.com';
+    const rawMlUrl = process.env.ML_API_URL || 'https://railsync-ml.onrender.com';
+    const ML_API_URL = rawMlUrl.replace(/\/predict-priority$/, '');
     const solverUrl = `${ML_API_URL}/solve-horizon`;
     lastPayload = JSON.stringify(apiPayload);
     console.log("Attempting CP-SAT call to:", solverUrl);

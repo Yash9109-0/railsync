@@ -10,10 +10,8 @@ import {
   Button,
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
   CircularGauge,
   type GaugeColor,
   Dialog,
@@ -35,14 +33,13 @@ import {
 import { AsyncButton } from "@/components/ui/async-button"
 import { SuccessOverlay } from "@/components/ui"
 import {
-  CalendarClock,
   Check,
   ClipboardList,
   RefreshCw,
   CheckCircle,
   Clock,
+  CalendarClock,
   HelpCircle,
-  Sparkles,
   TrendingUp,
 } from "lucide-react"
 
@@ -357,22 +354,27 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Badge variant={HORIZON_TYPE_BADGE[horizon.horizon_type]}>
+      <CardHeader className="pb-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2 min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={HORIZON_TYPE_BADGE[horizon.horizon_type]} className="gap-1">
+                {horizonTypeIcon(horizon.horizon_type)}
                 {cap(horizon.horizon_type)}
               </Badge>
-              <CalendarClock className="h-4 w-4 text-muted-foreground" />
-              {fmtDateRange(horizon.horizon_start, horizon.horizon_end)}
+              <span className="text-sm font-medium text-muted-foreground">
+                {fmtDateRangeShort(horizon.horizon_start, horizon.horizon_end)}
+              </span>
               <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-            </CardTitle>
-            <CardDescription className="max-w-[65ch]">
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-[65ch]">
               {horizon.summary_explanation ?? "No plan narrative available."}
-            </CardDescription>
+            </p>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span>Generated {fmtDateTime(horizon.generated_at)}</span>
+              <span className="inline-flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Generated {fmtDateTime(horizon.generated_at)}
+              </span>
               <Separator orientation="vertical" className="h-3" />
               <span>
                 {scheduledCount} scheduled · {items.length - scheduledCount} deferred
@@ -381,10 +383,9 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="flex items-center gap-1">
-                    Availability goal met:{" "}
                     {horizon.projected_availability_pct != null
                       ? `${Math.round(horizon.projected_availability_pct)}%`
-                      : "—"}
+                      : "—"} availability
                     <HelpCircle className="h-3 w-3" aria-hidden="true" />
                   </span>
                 </TooltipTrigger>
@@ -396,36 +397,8 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
               </Tooltip>
             </div>
           </div>
-          <div className="mt-2 text-right sm:mt-0">
+          <div className="shrink-0 sm:ml-4">
             <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="text-3xl font-semibold tabular-nums flex items-baseline gap-1">
-                  {fmtPct(horizon.projected_availability_pct)}
-                  <HelpCircle className="h-5 w-5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" aria-hidden="true" />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-xs">
-                <p className="text-xs">
-                  Projected percentage of track time available for passenger trains after scheduling maintenance blocks. Higher is better.
-                </p>
-              </TooltipContent>
-            </Tooltip>
-            <p className="text-xs text-muted-foreground">
-              Projected availability
-            </p>
-          </div>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge className={HORIZON_TYPE_BADGE[horizon.horizon_type]}>
-              {horizonTypeIcon(horizon.horizon_type)}
-              {cap(horizon.horizon_type)}
-            </Badge>
-            <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-            <span className="text-sm font-medium text-muted-foreground">
-              {fmtDateRangeShort(horizon.horizon_start, horizon.horizon_end)}
-            </span>
-          </div>
-          <Tooltip>
               <TooltipTrigger asChild>
                 <CircularGauge
                   value={horizon.projected_availability_pct}
@@ -441,25 +414,7 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
                 </p>
               </TooltipContent>
             </Tooltip>
-        </div>
-
-        <div className="mt-3 flex items-start gap-2 rounded-lg border bg-muted/40 p-3">
-          <Sparkles className="mt-1 h-4 w-4 text-primary/70 shrink-0" />
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {horizon.summary_explanation ?? "No plan narrative available."}
-          </p>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            Generated {fmtDateTime(horizon.generated_at)}
-          </span>
-          <Separator orientation="vertical" className="h-3" />
-          <span>
-            {scheduledCount} scheduled · {items.length - scheduledCount} deferred
-          </span>
-        </div>
+          </div>
         </div>
       </CardHeader>
 

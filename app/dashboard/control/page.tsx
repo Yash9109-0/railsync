@@ -63,8 +63,8 @@ import {
   FileText,
 } from "lucide-react";
 import LiveTrackMap from "@/components/LiveTrackMap";
-// import CorridorAvailability from "@/components/CorridorAvailability";
-// import { HorizonPlanReview } from "@/components/HorizonPlanReview";
+import CorridorAvailability from "@/components/CorridorAvailability";
+import HorizonPlanReview from "@/components/HorizonPlanReview";
 import type {
   ApprovalDecision,
   BlockPlanOption,
@@ -2295,10 +2295,10 @@ if (pendingError) {
         </TabsContent>
 
         <TabsContent value="horizons" className="space-y-3">
-          <div className="p-4 border rounded-lg">Horizon Review - temp disabled</div>
+          <HorizonPlanReview />
         </TabsContent>
         <TabsContent value="corridor" className="space-y-3">
-          <div className="p-4 border rounded-lg">Corridor Availability - temp disabled</div>
+          <CorridorAvailability />
         </TabsContent>
       </Tabs>
 

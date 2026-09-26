@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useCorridor } from "@/context/CorridorContext";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -13,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { GlobeLock, MapPin, Clock } from "lucide-react";
+import { GlobeLock, MapPin, Clock, LogOut } from "lucide-react";
 import type { Corridor } from "@/lib/types";
 
 function formatTime(date: Date): string {
@@ -33,10 +35,25 @@ interface DashboardTopBarProps {
 }
 
 export function DashboardTopBar({ className }: DashboardTopBarProps) {
+  const router = useRouter();
   const [corridors, setCorridors] = useState<Corridor[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
   const { selectedCorridorId, setSelectedCorridorId } = useCorridor();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    const supabase = createClient();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast.error("Failed to sign out");
+      setIsSigningOut(false);
+    } else {
+      toast.success("Signed out successfully");
+      router.replace("/login");
+    }
+  };
 
   useEffect(() => {
     const fetchCorridors = async () => {
@@ -101,7 +118,7 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+<div className="flex items-center gap-3">
             {loading ? (
               <Skeleton className="h-8 w-52 rounded-lg" />
             ) : (
@@ -136,19 +153,29 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
                           value={String(corridor.id)}
                           textValue={corridor.name}
                           className="data-[selected=true]:bg-primary/5 data-[selected=true]:text-primary"
-                      >
-                        <div className="flex items-center justify-between w-full">
-                          <span>{corridor.name}</span>
-                          {corridor.id === selectedCorridorId && (
-                            <GlobeLock className="h-3.5 w-3.5 text-primary" />
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span>{corridor.name}</span>
+                            {corridor.id === selectedCorridorId && (
+                              <GlobeLock className="h-3.5 w-3.5 text-primary" />
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
                   )}
                 </SelectContent>
               </Select>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleSignOut}
+              disabled={isSigningOut}
+              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>

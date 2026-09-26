@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-const ML_API_URL = process.env.ML_API_URL || 'https://railsync-ml.onrender.com'
+const ML_BASE_URL = process.env.ML_API_URL?.replace('/predict-priority', '') || 'https://railsync-ml.onrender.com'
 
 async function checkMlApi(): Promise<{ status: 'operational' | 'degraded' | 'unreachable'; latencyMs: number; error?: string }> {
   const start = Date.now()
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
-    const res = await fetch(`${ML_API_URL}/health`, { 
+    const res = await fetch(`${ML_BASE_URL}/health`, { 
       method: 'GET',
       signal: controller.signal,
       cache: 'no-store',
@@ -44,12 +44,16 @@ async function checkCpSatSolver(): Promise<{ status: 'operational' | 'degraded' 
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8000)
-    const res = await fetch(`${ML_API_URL}/solve-horizon`, { 
+    const res = await fetch(`${ML_BASE_URL}/solve-horizon`, { 
       method: 'POST',
       signal: controller.signal,
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ horizon_hours: 1, trains: [], blocks: [] }),
+      body: JSON.stringify({
+        requests: [],
+        segment_capacity_mins: {},
+        horizon_total_mins: 60
+      }),
     })
     clearTimeout(timeout)
     const latency = Date.now() - start
