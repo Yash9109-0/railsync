@@ -168,13 +168,14 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
             )}
             <Button
               variant="ghost"
-              size="icon"
+              size="sm"
               onClick={handleSignOut}
               disabled={isSigningOut}
-              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-2"
               aria-label="Sign out"
             >
               <LogOut className="h-4 w-4" />
+              <span className="hidden md:inline">Sign out</span>
             </Button>
           </div>
         </div>
