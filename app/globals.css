@@ -412,6 +412,45 @@
     animation: scoreReveal 0.5s var(--ease-standard) forwards;
   }
 
+  /* Login page animations */
+  @keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes fadeInUp {
+    0% { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+    20%, 40%, 60%, 80% { transform: translateX(4px); }
+  }
+  @keyframes pulseSlow {
+    0%, 100% { opacity: 0.1; transform: scale(1); }
+    50% { opacity: 0.2; transform: scale(1.05); }
+  }
+
+  .animate-fade-in {
+    animation: fadeIn var(--duration-slow) var(--ease-standard) forwards;
+  }
+  .animate-fade-in-up {
+    animation: fadeInUp var(--duration-slow) var(--ease-standard) forwards;
+    opacity: 0;
+  }
+  .animate-shake {
+    animation: shake 400ms var(--ease-standard);
+  }
+  .animate-pulse-slow {
+    animation: pulseSlow 4s ease-in-out infinite;
+  }
+
+  .animation-delay-200 { animation-delay: 200ms; }
+  .animation-delay-400 { animation-delay: 400ms; }
+  .animation-delay-600 { animation-delay: 600ms; }
+  .animation-delay-800 { animation-delay: 800ms; }
+  .animation-delay-1000 { animation-delay: 1000ms; }
+
   /* Shimmer sweep animation for priority rings - sweeps once on render */
   @keyframes shimmerSweep {
     0% {
