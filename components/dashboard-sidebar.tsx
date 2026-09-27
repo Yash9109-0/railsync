@@ -144,10 +144,7 @@ export function DashboardSidebar({
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
-  const { hasCompleted, startTour } = useOnboardingTour(
-    userId,
-    (role as "admin" | "maintenance" | "control" | "field") || "maintenance"
-  );
+  const { hasCompleted, startTour } = useOnboardingTour(userId);
 
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {

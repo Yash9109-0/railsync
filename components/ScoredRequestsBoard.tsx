@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { DashboardPageHeader } from "@/components/dashboard-page-header"
 import { toast } from "sonner"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import {
   AlertOctagon,
   AlertTriangle,
@@ -450,7 +450,7 @@ export default function ScoredRequestsBoard() {
   const [departmentFilter, setDepartmentFilter] = useState("all")
   const [sortBy, setSortBy] = useState<"priority_score" | "created_at">("priority_score")
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from("block_requests")
@@ -488,7 +488,7 @@ export default function ScoredRequestsBoard() {
       }
     }
     setLoading(false)
-  }
+  }, [])
 
   const processRequest = async (id: string) => {
     setProcessing((p) => ({ ...p, [id]: true }))
@@ -532,7 +532,7 @@ export default function ScoredRequestsBoard() {
     }
   }
 
-  const sweepStuckRequests = async (showToast = true) => {
+  const sweepStuckRequests = useCallback(async (showToast = true) => {
     setSweeping(true)
     try {
       const { data: stuckRequests, error: fetchError } = await supabase
@@ -573,7 +573,7 @@ export default function ScoredRequestsBoard() {
     } finally {
       setSweeping(false)
     }
-  }
+  }, [loadAll])
 
   useEffect(() => {
     const init = async () => {
@@ -581,7 +581,7 @@ export default function ScoredRequestsBoard() {
       await sweepStuckRequests(false)
     }
     init()
-  }, [])
+  }, [loadAll, sweepStuckRequests]);
 
   const handleReprocess = async (id: string) => {
     setReprocessing((p) => ({ ...p, [id]: true }))
@@ -672,7 +672,7 @@ export default function ScoredRequestsBoard() {
   )
 
   function DelayRiskBadge({ risk }: { risk: string | null }) {
-    const { icon: Icon, label, variant } = delayRiskMeta(risk)
+    const { icon: Icon, label } = delayRiskMeta(risk)
     if (!label) return null
     return (
       <Badge variant="outline" className={cn("gap-1")}>

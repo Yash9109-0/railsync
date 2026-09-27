@@ -225,14 +225,6 @@ function getSegmentName(
   return seg ? seg.displayName : String(id)
 }
 
-function formatFromTimestamp(dateString: string): string {
-  const date = new Date(dateString)
-  if (isNaN(date.getTime())) {
-    return toDateTimeLocal(new Date())
-  }
-  return toDateTimeLocal(date)
-}
-
 function isOverdue(defect: Defect): boolean {
   if (!defect.due_date) return false
   try {
@@ -457,7 +449,7 @@ export default function MaintenancePage() {
         toast.success("Reprocessed successfully")
         await fetchRequests()
       }
-    } catch (err) {
+    } catch {
       toast.error("Reprocessing failed")
     } finally {
       setReprocessing((p) => ({ ...p, [requestId]: false }))
@@ -492,7 +484,7 @@ export default function MaintenancePage() {
       } else {
         toast.success("AI scoring complete!")
       }
-    } catch (err) {
+    } catch {
       toast.success("Block request submitted. AI scoring may be pending.")
     }
   }

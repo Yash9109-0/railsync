@@ -439,7 +439,7 @@ function CorridorSnapshot({ selectedCorridorId }: CorridorSnapshotProps) {
           {loading && <Loader2 className="h-3 w-3 animate-spin" />}
         </div>
         <div className="grid grid-cols-3 gap-3 sm:gap-4">
-          {statItems.map((item, i) => (
+          {statItems.map((item) => (
             <div
               key={item.label}
               className="flex items-center gap-2 p-2 rounded-lg bg-card border border-border/50 hover:bg-muted/30 transition-colors"
@@ -1392,8 +1392,6 @@ export default function ControlPage() {
     null,
   );
   const [confirmModifyOpen, setConfirmModifyOpen] = useState(false);
-  const [modifyConfirmTarget, setModifyConfirmTarget] =
-    useState<BlockRequestRow | null>(null);
   const [modifyOpen, setModifyOpen] = useState(false);
   const [modifyTarget, setModifyTarget] = useState<BlockRequestRow | null>(
     null,
@@ -2460,8 +2458,8 @@ if (pendingError) {
             </DialogTitle>
             <DialogDescription>
               Are you sure you want to modify this block request
-              {modifyConfirmTarget?.segments?.name
-                ? ` on Segment ${modifyConfirmTarget.segments.name}`
+              {modifyTarget?.segments?.name
+                ? ` on Segment ${modifyTarget.segments.name}`
                 : ""}
               ?
               <br />
@@ -2479,8 +2477,8 @@ if (pendingError) {
               variant="default"
               className="bg-warning text-warning-foreground hover:bg-warning/90"
               onClick={() => {
-                if (modifyConfirmTarget) {
-                  openModify(modifyConfirmTarget);
+                if (modifyTarget) {
+                  openModify(modifyTarget);
                 }
                 setConfirmModifyOpen(false);
               }}

@@ -84,18 +84,6 @@ function cap(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
-function fmtDateRange(start: string, end: string): string {
-  const s = new Date(start)
-  const e = new Date(end)
-  if (isNaN(s.getTime()) && isNaN(e.getTime())) return "—"
-  const opts: Intl.DateTimeFormatOptions = {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }
-  return `${s.toLocaleDateString("en-US", opts)} – ${e.toLocaleDateString("en-US", opts)}`
-}
-
 function fmtDateTime(iso: string): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return "—"
@@ -132,11 +120,6 @@ function fmtDuration(mins: number | null): string {
   const h = Math.floor(m / 60)
   const rest = Math.round(m % 60)
   return h > 0 ? `${h}h ${rest}m` : `${rest} min`
-}
-
-function fmtPct(n: number | null): string {
-  if (n == null || Number.isNaN(Number(n))) return "—"
-  return Number.isInteger(n) ? `${n}%` : `${n.toFixed(1)}%`
 }
 
 function availabilityColorClass(pct: number | null): GaugeColor {

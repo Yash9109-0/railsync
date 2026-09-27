@@ -2,9 +2,8 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, ChevronRight, Check, HelpCircle, Settings } from "lucide-react";
+import { X, ChevronRight, Check, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export type UserRole = "admin" | "maintenance" | "control" | "field";
@@ -216,7 +215,7 @@ export function OnboardingTour({
     if (isOpen && currentStep) {
       updateTargetRect();
     }
-  }, [currentStepIndex, isOpen, updateTargetRect]);
+  }, [currentStep, currentStepIndex, isOpen, updateTargetRect, steps]);
 
   const handleNext = () => {
     if (currentStepIndex < steps.length - 1) {
@@ -402,13 +401,13 @@ export function OnboardingTrigger({ userId, role, children }: OnboardingTriggerP
         onComplete={handleComplete}
       />
       {hasCompleted && (
-        <TourReplayButton userId={userId} role={role} onReplay={() => setIsOpen(true)} />
+        <TourReplayButton role={role} onReplay={() => setIsOpen(true)} />
       )}
     </>
   );
 }
 
-function TourReplayButton({ userId, role, onReplay }: { userId: string; role: UserRole; onReplay: () => void }) {
+function TourReplayButton({ role, onReplay }: { role: UserRole; onReplay: () => void }) {
   return (
     <Button
       variant="ghost"
@@ -422,7 +421,7 @@ function TourReplayButton({ userId, role, onReplay }: { userId: string; role: Us
   );
 }
 
-export function useOnboardingTour(userId: string, role: UserRole) {
+export function useOnboardingTour(userId: string) {
   const [isOpen, setIsOpen] = useState(false);
   const [hasCompleted, setHasCompleted] = useState(false);
   const [mounted, setMounted] = useState(false);
