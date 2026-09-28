@@ -623,9 +623,12 @@ export default function ScoredRequestsBoard() {
     .filter((r) => r.status === "submitted" || r.status === "pending")
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
 
-  const scoredWithScore = scored.filter((r) => r.priority_score != null)
+  const scoredWithScore = scored
+    .filter((r) => r.priority_score != null)
+    .map((r) => Number(r.priority_score))
+    .filter((n) => Number.isFinite(n))
   const avgPriority = scoredWithScore.length
-    ? scoredWithScore.reduce((sum, r) => sum + (r.priority_score as number), 0) / scoredWithScore.length
+    ? scoredWithScore.reduce((sum, n) => sum + n, 0) / scoredWithScore.length
     : 0
   const highRiskCount = scored.filter((r) => (r.delay_risk ?? "").toLowerCase() === "high").length
 
@@ -1055,7 +1058,7 @@ export default function ScoredRequestsBoard() {
           />
           <StatCard
             title="Avg Priority Score"
-            value={scoredWithScore.length ? `${avgPriority.toFixed(1)}` : "—"}
+            value={scoredWithScore.length ? avgPriority : "—"}
             icon={<Gauge className="h-5 w-5 text-primary" />}
           />
           <StatCard
