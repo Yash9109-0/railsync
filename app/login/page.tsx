@@ -174,7 +174,7 @@ export default function LoginPage() {
 
       {/* Right form panel */}
       <main className="flex min-h-screen items-center justify-center p-6">
-        <Card className="w-full max-w-md shadow-xl animate-fade-in">
+        <Card className="w-full max-w-md shadow-xl animate-fade-in backdrop-blur-xl bg-white/60 dark:bg-slate-900/60 border-border-subtle/50 dark:border-border-subtle/30">
           <CardHeader className="space-y-6">
             <div className="flex flex-col items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
@@ -284,7 +284,7 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
-                className="w-full min-h-12"
+                className="w-full"
                 disabled={isLoading}
                 size="lg"
               >

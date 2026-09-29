@@ -1,0 +1,4 @@
+- Always build modern SaaS-style UI components with clean layouts, subtle gradients, and glassmorphism (backdrop-blur).
+- Never use plain, unstyled HTML elements. Always make components rich and polished.
+- Always use `lucide-react` for icons.
+- Use `framer-motion` for smooth entry animations and interactive states.
