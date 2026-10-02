@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardFooter,
@@ -39,6 +40,7 @@ import {
   Bug,
   Calendar,
   ClipboardList,
+  Download,
   HelpCircle,
   History,
   Layers,
@@ -50,6 +52,7 @@ import {
   Zap,
 } from "lucide-react"
 import { DashboardPageHeader } from "@/components/dashboard-page-header"
+import { downloadDefectsPdf, type DefectPdfRow } from "@/lib/defects-pdf"
 import type { BlockRequest, Segment, PlanOption, Defect } from "@/lib/types"
 
 interface SegmentOption extends Segment {
@@ -252,6 +255,7 @@ export default function MaintenancePage() {
   >({})
   const [loading, setLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [exportingPdf, setExportingPdf] = useState(false)
 
   const [segmentId, setSegmentId] = useState<string>("")
   const [department, setDepartment] = useState<string>("")
@@ -682,6 +686,60 @@ export default function MaintenancePage() {
     })
   }, [requests, searchQuery, statusFilter, segments])
 
+  const handleExportPdf = async () => {
+    if (defects.length === 0 || exportingPdf) return
+
+    setExportingPdf(true)
+    try {
+      const rows: DefectPdfRow[] = defects.map((defect) => {
+        const linkedBR = defect.linked_block_request_id
+          ? blockRequestScores[defect.linked_block_request_id]
+          : undefined
+
+        let score = "—"
+        if (linkedBR) {
+          if (linkedBR.status === "scored" && linkedBR.priority_score !== null) {
+            score = linkedBR.priority_score.toFixed(1)
+          } else if (linkedBR.status === "submitted") {
+            score = "AI Processing"
+          } else {
+            score = linkedBR.status
+          }
+        } else {
+          score = "No block"
+        }
+
+        return {
+          defectType:
+            DEFECT_TYPE_LABELS[defect.defect_type] ?? defect.defect_type,
+          severity: SEVERITY_LABELS[defect.severity] ?? defect.severity,
+          status: getDefectStatusBadge(defect.status).label,
+          description:
+            defect.work_description ?? defect.asset_description ?? "—",
+          segment: getSegmentName(defect.segment_id, segments),
+          department: defect.department ?? "—",
+          dueDate: formatDate(defect.due_date),
+          overdue: isOverdue(defect),
+          score,
+        }
+      })
+
+      await downloadDefectsPdf(rows, {
+        generatedBy: user?.email ?? null,
+        corridorLabel:
+          selectedCorridorId != null
+            ? `Corridor ${selectedCorridorId}`
+            : "All corridors",
+      })
+      toast.success("Defect register exported to PDF")
+    } catch (error) {
+      console.error("Failed to export defect register:", error)
+      toast.error("Failed to export defect register to PDF")
+    } finally {
+      setExportingPdf(false)
+    }
+  }
+
   return (
     <div className="w-full space-y-6">
       <DashboardPageHeader
@@ -1025,6 +1083,17 @@ export default function MaintenancePage() {
                 Defects with a linked block request show the AI priority score
                 once scored.
               </CardDescription>
+              <CardAction>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleExportPdf}
+                  disabled={loading || exportingPdf || defects.length === 0}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {exportingPdf ? "Exporting..." : "Download PDF"}
+                </Button>
+              </CardAction>
             </CardHeader>
             <CardContent>
               {loading ? (
