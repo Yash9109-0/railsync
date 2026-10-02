@@ -52,7 +52,7 @@ export function LoadingBar() {
       aria-valuemax={100}
     >
       <div
-        className="h-full bg-primary transition-all duration-150 ease-out"
+        className="h-full bg-primary transition-all duration-fast"
         style={{
           width: `${progress}%`,
           boxShadow: "0 0 10px hsl(var(--primary)), 0 0 20px hsl(var(--primary))",

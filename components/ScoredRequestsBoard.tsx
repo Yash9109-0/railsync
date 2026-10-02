@@ -153,7 +153,7 @@ function StatCard({
     : value.toString().replace(/[\d,]+/, displayValue.toLocaleString())
 
   return (
-    <Card className="border border-border bg-card/50 transition-shadow duration-200 hover:shadow-md bg-gradient-card">
+    <Card className="border border-border bg-card/50 transition-shadow duration-base hover:shadow-md bg-gradient-card">
       <CardContent className="pt-5">
         <div className="flex items-center gap-3">
           {icon}
@@ -204,7 +204,7 @@ function PriorityRing({ score }: { score: number | null }) {
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className={cn(ringColor, "transition-all duration-500")}
+          className={cn(ringColor, "transition-all duration-slow")}
         />
         {value > 0 && (
           <circle
@@ -1136,7 +1136,7 @@ export default function ScoredRequestsBoard() {
                   const card = (
                     <div
                       key={row.id}
-                      className="animate-in fade-in slide-in-from-bottom-2 duration-400 fill-mode-both"
+                      className="animate-in fade-in slide-in-from-bottom-2 duration-slow fill-mode-both"
                       style={{ animationDelay: `${Math.min(index * 50, 400)}ms` }}
                     >
                       {renderRequestCard(row, "scored")}

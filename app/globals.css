@@ -287,14 +287,14 @@
 
 /* ── Utility layer ──────────────────────────────────────────────────────── */
 @layer utilities {
-  /* Page container — one max-width + grid-aligned gutters for every screen */
+  /* Page container — fluid full-width with responsive gutters and generous max-width for modern screens */
   .page-container {
     width: 100%;
     margin-left: auto;
     margin-right: auto;
     padding-left: 1rem; /* 16px */
     padding-right: 1rem; /* 16px */
-    max-width: 72rem;
+    max-width: 100%; /* Full width by default */
   }
   @media (min-width: 640px) {
     .page-container {
@@ -304,7 +304,20 @@
   }
   @media (min-width: 1024px) {
     .page-container {
-      max-width: 72rem;
+      padding-left: 2rem; /* 32px */
+      padding-right: 2rem; /* 32px */
+    }
+  }
+  @media (min-width: 1280px) {
+    .page-container {
+      padding-left: 2.5rem; /* 40px */
+      padding-right: 2.5rem; /* 40px */
+    }
+  }
+  @media (min-width: 1536px) {
+    .page-container {
+      padding-left: 3rem; /* 48px */
+      padding-right: 3rem; /* 48px */
     }
   }
 
@@ -445,11 +458,80 @@
     animation: pulseSlow 4s ease-in-out infinite;
   }
 
+  .animation-delay-100 { animation-delay: 100ms; }
   .animation-delay-200 { animation-delay: 200ms; }
+  .animation-delay-300 { animation-delay: 300ms; }
   .animation-delay-400 { animation-delay: 400ms; }
   .animation-delay-600 { animation-delay: 600ms; }
   .animation-delay-800 { animation-delay: 800ms; }
   .animation-delay-1000 { animation-delay: 1000ms; }
+
+  /* Notice entrance — dynamically appearing hints (caps lock, helper text) */
+  @keyframes noticeIn {
+    0% { opacity: 0; transform: translateY(-4px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .animate-notice-in {
+    animation: noticeIn 200ms var(--ease-standard) both;
+  }
+
+  /* Validation error entrance — fades in with a decaying shake */
+  @keyframes errorIn {
+    0% { opacity: 0; transform: translateY(-4px); }
+    40% { opacity: 1; transform: translateX(0); }
+    55% { transform: translateX(-4px); }
+    70% { transform: translateX(3px); }
+    85% { transform: translateX(-2px); }
+    100% { opacity: 1; transform: translateX(0); }
+  }
+  .animate-error-in {
+    animation: errorIn 450ms var(--ease-standard) both;
+  }
+
+  /* Pop-in for small elements that appear dynamically (checkmarks, icon tiles) */
+  @keyframes popIn {
+    0% { opacity: 0; transform: scale(0.4); }
+    60% { opacity: 1; transform: scale(1.2); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  .animate-pop-in {
+    animation: popIn 250ms var(--ease-standard) both;
+  }
+
+  /* Login brand panel — ambient blob drift */
+  @keyframes blobFloat {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(12px, -18px, 0) scale(1.06); }
+  }
+  .animate-blob-float {
+    animation: blobFloat 9s ease-in-out infinite;
+  }
+
+  /* Login brand panel — slow ambient gradient drift (adds depth to the base
+     purple wash without a separate layer). */
+  @keyframes bgPan {
+    0%, 100% { background-position: 0% 0%; }
+    50% { background-position: 100% 100%; }
+  }
+  .animate-bg-pan {
+    background-size: 170% 170%;
+    animation: bgPan 16s ease-in-out infinite;
+  }
+
+  /* Rail route — flowing centre-line dashes */
+  @keyframes railDash {
+    to { stroke-dashoffset: -36; }
+  }
+  .animate-rail-dash {
+    animation: railDash 2.4s linear infinite;
+  }
+
+  /* SMIL-driven motion (train marker) is not CSS-controllable, so remove it
+     entirely for reduced-motion users. */
+  @media (prefers-reduced-motion: reduce) {
+    .rail-motion { display: none; }
+    .animate-rail-dash { animation: none; }
+  }
 
   /* Shimmer sweep animation for priority rings - sweeps once on render */
   @keyframes shimmerSweep {
@@ -485,6 +567,16 @@
   }
   .animate-calendar-item-enter {
     animation: calendarItemEnter 300ms var(--ease-standard) forwards;
+  }
+
+  /* Users who opt out of motion should still see the chips — the animation
+     class sets opacity, so it must resolve to the final frame immediately. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-calendar-item-enter {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
   }
 
   /* ── Gradient Utilities ─────────────────────────────────────────────────── */

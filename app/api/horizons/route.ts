@@ -10,10 +10,11 @@ type HorizonRow = {
   summary_explanation: string | null
   generated_at: string
   items_improved_by_local_search: number | null
+  solver_used?: string
 }
 
 const HORIZONS_SELECT =
-  'id, horizon_type, horizon_start, horizon_end, projected_availability_pct, summary_explanation, generated_at, items_improved_by_local_search'
+  'id, horizon_type, horizon_start, horizon_end, projected_availability_pct, summary_explanation, generated_at, items_improved_by_local_search, solver_used'
 
 function getSupabase() {
   return createClient(

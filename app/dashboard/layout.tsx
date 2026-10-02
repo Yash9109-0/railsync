@@ -5,6 +5,7 @@ import { CorridorProvider } from "@/context/CorridorContext";
 import { DashboardTopBar } from "@/components/dashboard-top-bar";
 import { OnboardingWrapper } from "@/components/OnboardingWrapper";
 import { LoadingBar } from "@/components/LoadingBar";
+import { PageTransition } from "@/components/PageTransition";
 
 export const dynamic = 'force-dynamic';
 
@@ -62,7 +63,9 @@ export default async function DashboardLayout({
               }}
             />
             <DashboardTopBar />
-            <div className="page-container py-6">{children}</div>
+            <div className="page-container py-6 lg:py-8">
+              <PageTransition>{children}</PageTransition>
+            </div>
             {/* Chart gradient definitions - shared across all dashboard pages */}
             <div className="chart-gradients" aria-hidden="true">
               <svg>

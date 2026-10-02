@@ -6,7 +6,8 @@ import ScoredRequestsBoard from "@/components/ScoredRequestsBoard"
 
 export default function AiPage() {
   return (
-    <Tabs defaultValue="per-request" className="space-y-6">
+    <div className="w-full">
+      <Tabs defaultValue="per-request" className="space-y-6">
       <TabsList>
         <TabsTrigger value="per-request">Per-Request AI</TabsTrigger>
         <TabsTrigger value="planning" data-tour="planning-tab">Weekly/Monthly Planning</TabsTrigger>
@@ -20,5 +21,6 @@ export default function AiPage() {
         <HorizonPlanningCalendar />
       </TabsContent>
     </Tabs>
+    </div>
   )
 }

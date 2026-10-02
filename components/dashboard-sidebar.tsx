@@ -346,7 +346,7 @@ export function DashboardSidebar({
   return (
     <aside
       className={cn(
-        "flex flex-col border-r bg-background transition-[width] duration-250 ease-in-out",
+        "flex flex-col border-r bg-background transition-[width] duration-slow",
         "w-16 md:w-64",
         collapsed && "md:w-16",
       )}
@@ -469,7 +469,7 @@ export function DashboardSidebar({
 
       <div
         className={cn(
-          "flex items-center justify-between gap-3 px-3 py-4 transition-all duration-500",
+          "flex items-center justify-between gap-3 px-3 py-4 transition-all duration-slow",
           showWelcome
             ? "animate-in fade-in-0 zoom-in-95"
             : "",
@@ -494,7 +494,7 @@ export function DashboardSidebar({
               {roleLabel}
             </Badge>
             {showWelcome && (
-              <span className="text-xs text-primary font-medium animate-in fade-in slide-in-from-bottom-2 duration-300 delay-200">
+              <span className="text-xs text-primary font-medium animate-in fade-in slide-in-from-bottom-2 duration-base delay-200">
                 Welcome back!
               </span>
             )}

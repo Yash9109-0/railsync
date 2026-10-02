@@ -683,7 +683,7 @@ export default function MaintenancePage() {
   }, [requests, searchQuery, statusFilter, segments])
 
   return (
-    <div className="space-y-6">
+    <div className="w-full space-y-6">
       <DashboardPageHeader
         icon={Wrench}
         title="Maintenance"

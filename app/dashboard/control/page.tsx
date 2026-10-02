@@ -304,14 +304,16 @@ function StatCard({ title, value, icon, desc }: StatCardProps) {
     : displayValue.toFixed(2)
 
   return (
-    <Card className="transition-shadow duration-200 hover:shadow-md bg-gradient-card">
-      <CardContent className="py-5">
+    <Card className="transition-shadow duration-base hover:shadow-md bg-gradient-card">
+      <CardContent className="py-4">
         <div className="flex items-center gap-3">
-          {icon}
-          <span className="text-3xl font-bold tabular-nums font-heading">{formattedValue}</span>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            {icon}
+          </div>
+          <span className="text-2xl font-bold tabular-nums font-heading">{formattedValue}</span>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">{title}</p>
-        {desc ? <p className="text-xs text-muted-foreground">{desc}</p> : null}
+        <p className="mt-1.5 text-sm text-muted-foreground">{title}</p>
+        {desc ? <p className="mt-0.5 text-xs text-muted-foreground">{desc}</p> : null}
       </CardContent>
     </Card>
   );
@@ -434,7 +436,7 @@ function CorridorSnapshot({ selectedCorridorId }: CorridorSnapshotProps) {
   return (
     <Card className="bg-gradient-card">
       <CardContent className="py-3">
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-2">
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-3">
           <span className="font-medium text-sm">Corridor Snapshot</span>
           {loading && <Loader2 className="h-3 w-3 animate-spin" />}
         </div>
@@ -442,12 +444,12 @@ function CorridorSnapshot({ selectedCorridorId }: CorridorSnapshotProps) {
           {statItems.map((item) => (
             <div
               key={item.label}
-              className="flex items-center gap-2 p-2 rounded-lg bg-card border border-border/50 hover:bg-muted/30 transition-colors"
+              className="flex flex-col items-start gap-1.5 p-3 rounded-lg bg-card border border-border/50 hover:bg-muted/30 transition-colors"
             >
               <div className="flex-shrink-0">{item.icon}</div>
               <div className="min-w-0">
-                <p className="text-xl font-bold tabular-nums font-heading leading-tight">{loading ? "—" : item.value}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{item.label}</p>
+                <p className="text-lg font-bold tabular-nums font-heading leading-tight">{loading ? "—" : item.value}</p>
+                <p className="text-xs text-muted-foreground truncate">{item.label}</p>
               </div>
             </div>
           ))}
@@ -662,7 +664,7 @@ function QuickInsightsCard({
   loading: boolean;
 }) {
   return (
-    <Card className="transition-shadow duration-200 hover:shadow-md bg-gradient-card">
+    <Card className="transition-shadow duration-base hover:shadow-md bg-gradient-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Lightbulb className="h-5 w-5 text-primary" />
@@ -1720,13 +1722,13 @@ if (pendingError) {
     if (request.department) departmentCounts[request.department] += 1;
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
+return (
+    <div className="w-full space-y-8 lg:space-y-10">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Control Center</h1>
           <p className="text-sm text-muted-foreground">
-            Live timetable &amp; block request approvals for the rail network.
+            Live timetable & block request approvals for the rail network.
           </p>
         </div>
         <Button
@@ -1744,11 +1746,12 @@ if (pendingError) {
         </Button>
       </div>
 
-      <DepartmentOverview counts={departmentCounts} loading={loadingPending} />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+        <DepartmentOverview counts={departmentCounts} loading={loadingPending} />
+        <CorridorSnapshot selectedCorridorId={selectedCorridorId} />
+      </div>
 
-      <CorridorSnapshot selectedCorridorId={selectedCorridorId} />
-
-      <Tabs defaultValue="timetable" className="space-y-4">
+      <Tabs defaultValue="timetable" className="space-y-6">
         <TabsList className="flex flex-wrap gap-1">
           <TabsTrigger value="timetable">Timetable</TabsTrigger>
           <TabsTrigger value="pending">Pending Plans</TabsTrigger>
@@ -1757,15 +1760,15 @@ if (pendingError) {
           <TabsTrigger value="corridor">Corridor</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="timetable" className="space-y-3">
-          <div className="flex items-center justify-between">
+<TabsContent value="timetable" className="space-y-5">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-sm font-semibold flex items-center gap-2">
               Live Timetable
               <Badge variant="success" className="gap-1.5">
                 <span className="w-2 h-2 bg-success dark:bg-success/80 rounded-full animate-pulse"></span> Live
               </Badge>
             </h2>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/80 dark:bg-success/60 opacity-75"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-success dark:bg-success/80"></span>
@@ -1779,53 +1782,56 @@ if (pendingError) {
           </div>
 
           <Card>
-            <CardContent>
+            <CardContent className="p-0">
               <LiveTrackMap timetable={timetable} />
             </CardContent>
           </Card>
 
           {loadingTimetable ? (
-            <div className="grid gap-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between p-4 rounded-xl border bg-card"
-                >
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-9 w-9 rounded-full" />
-                    <div className="space-y-1.5">
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-3 w-44" />
+                <Card key={i} size="sm">
+                  <CardContent className="flex items-center justify-between p-4">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-9 w-9 rounded-full" />
+                      <div className="space-y-1.5">
+                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-3 w-44" />
+                      </div>
                     </div>
-                  </div>
-                  <Skeleton className="h-5 w-16" />
-                </div>
+                    <Skeleton className="h-5 w-16" />
+                  </CardContent>
+                </Card>
               ))}
             </div>
           ) : timetable.length === 0 ? (
-            <div className="rounded-xl border bg-card py-8 text-center text-sm text-muted-foreground">
-              <TrainFront className="mx-auto mb-2 h-6 w-6" />
-              No timetable entries. Hit "Refresh Live Timetable" to seed the
-              feed.
-            </div>
+            <Card>
+              <CardContent className="py-12 text-center text-sm text-muted-foreground">
+                <TrainFront className="mx-auto mb-2 h-6 w-6" />
+                No timetable entries. Hit "Refresh Live Timetable" to seed the
+                feed.
+              </CardContent>
+            </Card>
           ) : (
-            <div className="grid gap-3">
+            <div className="grid gap-4">
               {timetable.map(train => (
-                <div key={train.id} className="flex items-center justify-between p-4 rounded-xl border bg-card hover:shadow-md transition-all">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
-                      <TrainFront className="w-4 h-4" />
+                <Card key={train.id} size="sm" className="hover:shadow-md transition-all">
+                  <CardContent className="flex items-center justify-between p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+                        <TrainFront className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-bold font-mono">{train.train_number}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">{train.segments?.name ?? "—"} <ArrowRight className="w-3 h-3" /> <span suppressHydrationWarning>{fmtDateTime(train.scheduled_time)}</span></p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold font-mono">{train.train_number}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">{train.segments?.name ?? "â€”"} <ArrowRight className="w-3 h-3" /> <span suppressHydrationWarning>{fmtDateTime(train.scheduled_time)}</span></p>
-                    </div>
-                  </div>
-                  <Badge variant={statusVariant(train.status)} className="gap-1.5 capitalize">
-                    <span className={`w-2 h-2 rounded-full animate-pulse ${train.status === "delayed" || train.status === "cancelled" ? "bg-warning" : "bg-success"}`}></span>
-                    {statusLabel(train.status)}
-                  </Badge>
-                </div>
+                    <Badge variant={statusVariant(train.status)} className="gap-1.5 capitalize">
+                      <span className={`w-2 h-2 rounded-full animate-pulse ${train.status === "delayed" || train.status === "cancelled" ? "bg-warning" : "bg-success"}`}></span>
+                      {statusLabel(train.status)}
+                    </Badge>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}
@@ -1918,7 +1924,7 @@ if (pendingError) {
                             <label
                               key={opt.id}
                               className={cn(
-                                "relative flex-1 cursor-pointer rounded-xl border-2 p-4 text-left transition-all duration-200 sm:basis-1/3 sm:min-w-0 flex flex-col gap-3",
+                                "relative flex-1 cursor-pointer rounded-xl border-2 p-4 text-left transition-all duration-base sm:basis-1/3 sm:min-w-0 flex flex-col gap-3",
                                 isSelected
                                   ? "border-primary animate-selectGlow"
                                   : isRecommended

@@ -19,7 +19,7 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
-import { ChevronDown, ChevronUp, CalendarDays, Calendar, HelpCircle } from "lucide-react"
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, CalendarDays, Calendar, HelpCircle, Clock, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type HorizonRow = {
@@ -52,9 +52,13 @@ type RequestInfo = {
   department: string | null
 }
 
-type CalDay = { date: Date; key: string; inMonth: boolean }
+/** A single rendered calendar cell. `inHorizon` marks days that belong to the
+ *  plan window; padding days (used to square off the monthly grid) are false. */
+type CalDay = { date: Date; key: string; inMonth: boolean; inHorizon: boolean }
 
 const DAY_NAMES_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const DAY_MS = 24 * 60 * 60 * 1000
+const MAX_CHIPS_PER_DAY = 3
 
 function parseYmd(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
@@ -67,10 +71,6 @@ function dateKey(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`
 }
 
-function dayName(date: Date): string {
-  return DAY_NAMES_SHORT[date.getUTCDay()]
-}
-
 function formatDateTime(value: string) {
   const parsed = Date.parse(value)
   if (Number.isNaN(parsed)) return value
@@ -80,18 +80,23 @@ function formatDateTime(value: string) {
   })
 }
 
+/** Horizon dates are stored as UTC ISO strings. Formatting them with the local
+ *  zone renders the previous day for anyone west of Greenwich, so every
+ *  calendar-date formatter pins `timeZone: "UTC"`. */
 function formatDate(value: string) {
   const parsed = Date.parse(value)
   if (Number.isNaN(parsed)) return value
-  return new Date(parsed).toLocaleDateString("en-US", { dateStyle: "medium" })
+  return new Date(parsed).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "UTC" })
 }
 
 function formatHour(hour: number | null): string {
-  if (hour == null || Number.isNaN(hour)) return ""
-  const h = Math.floor(hour)
-  const mm = Math.round((hour - h) * 60)
-  const hh = String(h).padStart(2, "0")
-  return mm === 0 ? `${hh}:00` : `${hh}:${String(mm).padStart(2, "0")}`
+  if (hour == null || !Number.isFinite(hour)) return ""
+  // Rounding to whole minutes first stops 12.999 -> "12:60".
+  const totalMins = Math.round(hour * 60)
+  const wrapped = ((totalMins % 1440) + 1440) % 1440
+  const hh = String(Math.floor(wrapped / 60)).padStart(2, "0")
+  const mm = String(wrapped % 60).padStart(2, "0")
+  return `${hh}:${mm}`
 }
 
 function getAvailabilityColorClass(pct: number): string {
@@ -100,11 +105,76 @@ function getAvailabilityColorClass(pct: number): string {
   return "text-destructive"
 }
 
+/** Single source of truth for scheduled/deferred colouring. The chip border, the
+ *  legend swatch and the "deferred" tray all read from here so the two states can
+ *  never drift apart again. */
 function chipStatusClass(status: "scheduled" | "deferred"): string {
-  if (status === "scheduled") {
-    return "bg-primary/10 text-primary border-primary/20 dark:bg-primary/20 dark:text-primary dark:border-primary/30"
+  return status === "scheduled"
+    ? "border-l-primary bg-primary/10 dark:bg-primary/15"
+    : "border-l-warning bg-warning/10 dark:bg-warning/15"
+}
+
+function statusDotClass(status: "scheduled" | "deferred"): string {
+  return status === "scheduled" ? "bg-primary" : "bg-warning"
+}
+
+function getTimeSlot(startHour: number | null, durationMins: number | null): string {
+  if (startHour == null) return ""
+  const start = formatHour(startHour)
+  if (durationMins == null || durationMins <= 0) return start
+  const endHour = startHour + durationMins / 60
+  // flag work that runs past midnight rather than printing a bogus 25:30
+  const spillsOver = Math.floor(endHour) >= 24
+  return `${start} – ${formatHour(endHour)}${spillsOver ? " +1d" : ""}`
+}
+
+/** Department colours are expressed as translucent theme tokens plus an opaque
+ *  text colour, so they stay legible in both light and dark mode (the previous
+ *  hard-coded `bg-blue-50 text-blue-700` pairs were unreadable on dark cards). */
+function getDepartmentBadgeClass(dept: string | null | undefined): string {
+  switch ((dept ?? "").toUpperCase()) {
+    case "TMS":
+      return "bg-chart-1/15 text-chart-1"
+    case "TDMS":
+      return "bg-chart-2/15 text-chart-2"
+    case "SMMS":
+      return "bg-chart-3/15 text-chart-3"
+    case "OHE":
+      return "bg-chart-4/15 text-chart-4"
+    default:
+      return "bg-muted text-muted-foreground"
   }
-  return "bg-warning/10 text-warning border-warning/20 dark:bg-warning/20 dark:text-warning dark:border-warning/30"
+}
+
+function formatWeekRange(start: string, end: string): string {
+  const s = parseYmd(start)
+  const e = parseYmd(end)
+  if (!s || !e) return `${start} - ${end}`
+  // horizon_end is exclusive in the optimizer (start + 7 days), so show the
+  // last day the plan actually covers.
+  const last = addDays(e, -1)
+  const fmt = (d: Date, withYear: boolean) =>
+    d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      ...(withYear ? { year: "numeric" } : {}),
+      timeZone: "UTC",
+    })
+  const sameYear = s.getUTCFullYear() === last.getUTCFullYear()
+  return `${fmt(s, !sameYear)} – ${fmt(last, !sameYear)}`
+}
+
+function formatMonthRange(start: string, end: string): string {
+  const s = parseYmd(start)
+  const e = parseYmd(end)
+  if (!s) return start
+  if (!e) return s.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })
+  const last = addDays(e, -1)
+  const sameMonth = s.getUTCMonth() === last.getUTCMonth() && s.getUTCFullYear() === last.getUTCFullYear()
+  if (sameMonth) {
+    return s.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })
+  }
+  return `${s.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })} – ${last.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}`
 }
 
 function getHorizonTypeBadgeClass(type: "weekly" | "monthly"): "default" | "success" {
@@ -118,40 +188,56 @@ function getStatusColorClass(status: "scheduled" | "deferred" | null | undefined
   return "text-warning"
 }
 
-function buildWeekDays(start: Date): CalDay[] {
-  const days: CalDay[] = []
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(start)
-    d.setUTCDate(d.getUTCDate() + i)
-    days.push({ date: d, key: dateKey(d), inMonth: true })
+/** The inclusive day count a horizon spans. The optimizer writes a rolling
+ *  window (7 days weekly, 30 days monthly) rather than snapping to calendar
+ *  boundaries, so we derive length from the stored start/end instead of the type. */
+function horizonDayCount(h: HorizonRow): number {
+  const start = parseYmd(h.horizon_start)
+  const end = parseYmd(h.horizon_end)
+  if (start && end) {
+    const days = Math.round((end.getTime() - start.getTime()) / DAY_MS)
+    if (Number.isFinite(days) && days > 0) return days
   }
-  return days
+  return h.horizon_type === "weekly" ? 7 : 30
 }
 
-function buildMonthGrid(start: Date): CalDay[][] {
-  const year = start.getUTCFullYear()
-  const month = start.getUTCMonth()
-  const first = new Date(Date.UTC(year, month, 1))
-  const last = new Date(Date.UTC(year, month + 1, 0))
-  const daysInMonth = last.getUTCDate()
-  const leading = first.getUTCDay()
-  const trailing = (7 - ((leading + daysInMonth) % 7)) % 7
-  const total = leading + daysInMonth + trailing
+function addDays(date: Date, n: number): Date {
+  const d = new Date(date)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d
+}
 
-  const gridStart = new Date(first)
-  gridStart.setUTCDate(gridStart.getUTCDate() - leading)
+function makeDay(date: Date, inHorizon: boolean): CalDay {
+  return { date, key: dateKey(date), inMonth: true, inHorizon }
+}
 
-  const weeks: CalDay[][] = []
-  for (let w = 0; w < total / 7; w++) {
-    const week: CalDay[] = []
-    for (let d = 0; d < 7; d++) {
-      const dd = new Date(gridStart)
-      dd.setUTCDate(dd.getUTCDate() + w * 7 + d)
-      week.push({ date: dd, key: dateKey(dd), inMonth: dd.getUTCMonth() === month })
-    }
-    weeks.push(week)
+/** Every real day in the plan window, in order. */
+function buildHorizonDays(h: HorizonRow, start: Date): CalDay[] {
+  return Array.from({ length: horizonDayCount(h) }, (_, i) => makeDay(addDays(start, i), true))
+}
+
+/** Pads the window with the leading/trailing days needed to fill whole
+ *  Sunday-based weeks. Padding cells are rendered muted and never hold items,
+ *  so nothing is dropped when a monthly window spills into the next month. */
+function toWeekRows(days: CalDay[]): CalDay[][] {
+  if (days.length === 0) return []
+  const leading = days[0].date.getUTCDay()
+  const trailing = (7 - ((leading + days.length) % 7)) % 7
+
+  const cells: CalDay[] = []
+  for (let i = leading; i > 0; i--) {
+    cells.push(makeDay(addDays(days[0].date, -i), false))
   }
-  return weeks
+  cells.push(...days)
+  for (let i = 1; i <= trailing; i++) {
+    cells.push(makeDay(addDays(days[days.length - 1].date, i), false))
+  }
+
+  const rows: CalDay[][] = []
+  for (let i = 0; i < cells.length; i += 7) {
+    rows.push(cells.slice(i, i + 7))
+  }
+  return rows
 }
 
 function AvailabilityGauge({ value }: { value: number | null }) {
@@ -228,32 +314,42 @@ function CalendarDayChip({
   onSelect: () => void
   animationDelay?: number
 }) {
-  const segmentName =
-    request?.segment_name ?? `Req ${item.block_request_id.slice(0, 8)}`
-  const startTime = formatHour(item.assigned_start_hour)
-  const chipText = startTime ? `${segmentName} ${startTime}` : segmentName
+  const blockId = item.block_request_id
+  const timeSlot = getTimeSlot(item.assigned_start_hour, item.assigned_duration_mins)
+  const dept = request?.department ?? "—"
   const workDescription = request?.work_description ?? ""
-  const ariaLabel = workDescription
-    ? `${chipText}. ${workDescription}`
-    : chipText
+  const ariaLabel = `${blockId}. ${timeSlot}. ${dept}. ${workDescription}`
 
-  const style = animationDelay > 0 ? {
-    animationDelay: `${animationDelay}ms`,
-    opacity: 0, // Start invisible, animation will bring it in
-  } as React.CSSProperties : undefined
+  // The animation class carries `forwards`, so opacity is driven by CSS and the
+  // chip can never be left stuck at opacity 0 when a delay is applied.
+  const style = animationDelay > 0 ? { animationDelay: `${animationDelay}ms` } : undefined
 
   return (
     <button
       type="button"
       onClick={onSelect}
       aria-label={ariaLabel}
+      title={`${blockId} · ${timeSlot || "unscheduled"} · ${dept}`}
       className={cn(
-        "block w-full truncate rounded-full px-2 py-1 text-xs font-medium mb-1 animate-calendar-item-enter",
+        "group w-full rounded-md border border-border-subtle border-l-4 p-1 text-left shadow-xs transition-colors duration-fast",
+        "hover:border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
         chipStatusClass(item.status),
+        animationDelay > 0 && "animate-calendar-item-enter",
       )}
       style={style}
     >
-      <span className="block w-full truncate">{chipText}</span>
+      <div className="flex items-center justify-between gap-1">
+        <span className="truncate text-xs font-medium">{blockId}</span>
+        <span className={cn("shrink-0 rounded px-1 text-[10px] font-medium", getDepartmentBadgeClass(dept))}>
+          {dept}
+        </span>
+      </div>
+      {timeSlot && (
+        <span className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+          <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+          {timeSlot}
+        </span>
+      )}
     </button>
   )
 }
@@ -322,7 +418,7 @@ function ItemDetailDialog({
             <TooltipTrigger asChild>
               <div className="flex justify-between items-center gap-2">
                 <span className="text-xs text-muted-foreground">Status</span>
-                <Badge variant="outline" className={cn("border-0 bg-transparent px-1 py-0 font-normal text-xs flex items-center gap-1", getStatusColorClass(item.status))}>
+                <Badge variant="outline" className={cn("flex items-center gap-1 border-0 bg-transparent p-0 font-normal text-xs capitalize", getStatusColorClass(item.status))}>
                   {item.status}
                   <HelpCircle className="h-3 w-3" aria-hidden="true" />
                 </Badge>
@@ -346,30 +442,33 @@ function ItemDetailDialog({
 }
 
 function CalendarSkeleton({ monthly }: { monthly: boolean }) {
-  const bodyCells = monthly ? 42 : 7
+  const bodyCells = monthly ? 35 : 7
   return (
-    <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border bg-border">
+    <div className="grid grid-cols-7 gap-1 overflow-hidden rounded-lg border border-border-subtle bg-card p-1">
       {Array.from({ length: 7 }).map((_, i) => (
-        <Skeleton key={`h-${i}`} className="h-10 w-full" />
+        <Skeleton key={`h-${i}`} className="h-8 w-full" />
       ))}
       {Array.from({ length: bodyCells }).map((_, i) => (
-        <Skeleton key={`b-${i}`} className="h-16 w-full" />
+        <Skeleton key={`b-${i}`} className="h-20 w-full" />
       ))}
     </div>
   )
 }
 
+/** Swatches are derived from the same helpers that colour the chips, so the
+ *  legend can no longer disagree with the calendar it describes. */
 function CalendarLegend() {
   return (
-    <div className="mt-4 flex gap-4 text-xs text-muted-foreground">
-      <div className="flex items-center gap-2">
-        <span className="h-3 w-3 rounded-full bg-primary" />
-        <span>Scheduled</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="h-3 w-3 rounded-full border border-dashed border-warning" />
-        <span>Deferred</span>
-      </div>
+    <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+      {(["scheduled", "deferred"] as const).map((status) => (
+        <div key={status} className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className={cn("h-3 w-1 rounded-full", statusDotClass(status))}
+          />
+          <span className="capitalize">{status}</span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -388,6 +487,66 @@ export default function HorizonPlanningCalendar() {
   const [horizonRequests, setHorizonRequests] = useState<Record<string, RequestInfo>>({})
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [justGeneratedHorizonId, setJustGeneratedHorizonId] = useState<string | null>(null)
+  // Days whose chip list is expanded past MAX_CHIPS_PER_DAY.
+  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({})
+
+  /** Steps the start date by one full planning period. */
+  const shiftStartDate = (delta: number) => {
+    setHorizonStartDate((prev) => {
+      if (!prev) return prev
+      const base = new Date(`${prev}T00:00:00Z`)
+      if (Number.isNaN(base.getTime())) return prev
+      return dateKey(addDays(base, delta * (horizonType === "weekly" ? 7 : 30)))
+    })
+  }
+
+  /** Weekly plans read best aligned to Monday so a "week" looks like a week. */
+  const alignStartToWeek = () => {
+    setHorizonStartDate((prev) => {
+      const base = new Date(`${prev}T00:00:00Z`)
+      if (Number.isNaN(base.getTime())) return prev
+      const dow = (base.getUTCDay() + 6) % 7 // 0 = Monday
+      return dateKey(addDays(base, -dow))
+    })
+  }
+
+  // The API returns a bare `horizonId`, not a nested `horizon` object.
+  const handleGeneratePlan = async () => {
+    if (!horizonStartDate) return
+    const res = await fetch("/api/generate-horizon-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        horizonType,
+        startDate: new Date(`${horizonStartDate}T00:00:00Z`).toISOString(),
+      }),
+    })
+    const json = await res.json()
+    if (!res.ok || json.error) {
+      throw new Error(json.error ?? "Failed to generate plan")
+    }
+    const newId: string | undefined = json.horizonId ?? json.horizon?.id
+    if (newId) {
+      // Open the new plan straight away so the user sees the result of the
+      // action they just triggered instead of having to hunt for the card.
+      setJustGeneratedHorizonId(newId)
+      setExpandedHorizon(newId)
+      setHorizonItems((prev) => {
+        const next = { ...prev }
+        delete next[newId]
+        return next
+      })
+      setHorizonItemsError((prev) => {
+        const next = { ...prev }
+        delete next[newId]
+        return next
+      })
+    }
+    await loadHorizons()
+    if (newId) {
+      await loadHorizonDetails(newId)
+    }
+  }
 
   const loadHorizons = async () => {
     setHorizonsLoading(true)
@@ -409,28 +568,6 @@ export default function HorizonPlanningCalendar() {
     } finally {
       setHorizonsLoading(false)
     }
-  }
-
-  const handleGeneratePlan = async () => {
-    if (!horizonStartDate) return
-    const res = await fetch("/api/generate-horizon-plan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        horizonType,
-        startDate: new Date(horizonStartDate).toISOString(),
-      }),
-    })
-    const json = await res.json()
-    if (!res.ok || json.error) {
-      throw new Error(json.error ?? "Failed to generate plan")
-    }
-    toast.success("Plan generated")
-    // Track the newly generated horizon ID for staggered animation
-    if (json.horizon?.id) {
-      setJustGeneratedHorizonId(json.horizon.id)
-    }
-    await loadHorizons()
   }
 
   const loadHorizonDetails = async (id: string) => {
@@ -491,106 +628,200 @@ export default function HorizonPlanningCalendar() {
       return <p className="text-sm text-muted-foreground">Invalid horizon dates.</p>
     }
 
-    const weeks = h.horizon_type === "weekly" ? [buildWeekDays(start)] : buildMonthGrid(start)
+    const isWeekly = h.horizon_type === "weekly"
+    const days = buildHorizonDays(h, start)
+    const rows = isWeekly ? [days] : toWeekRows(days)
 
-    const flat = weeks.flatMap((w) => w)
-  const itemsByDay = new Map<string, HorizonItemRow[]>()
-  const unassigned: HorizonItemRow[] = []
+    // Group strictly by the date the solver recorded. Anything without a date is
+    // deferred, and anything dated outside the window is surfaced separately
+    // rather than being dropped or silently moved to a different day.
+    const windowKeys = new Set(days.map((d) => d.key))
+    const itemsByDay = new Map<string, HorizonItemRow[]>()
+    const unassigned: HorizonItemRow[] = []
+    const outOfWindow: HorizonItemRow[] = []
 
-  const getFlatYmd = (idx: number) => {
-    const el: any = flat[idx]
-    if (!el) return ""
-    if (typeof el === "string") return el.split("T")[0]
-    if (el instanceof Date) return el.toISOString().split("T")[0]
-    return el.ymd || el.dateStr || el.iso || el.date?.toISOString?.().split("T")[0] || ""
-  }
-
-  const allSameDate = items.length > 1 && items.every(i => i.assigned_date === items[0].assigned_date)
-
-  for (let idx = 0; idx < items.length; idx++) {
-    const item = items[idx]
-    if (item.assigned_date) {
-      let targetDate = item.assigned_date
-      if (allSameDate) {
-        const flatYmd = getFlatYmd(idx % flat.length)
-        if (flatYmd) targetDate = flatYmd
+    for (const item of items) {
+      const key = item.assigned_date ? item.assigned_date.slice(0, 10) : null
+      if (!key) {
+        unassigned.push(item)
+      } else if (!windowKeys.has(key)) {
+        outOfWindow.push(item)
+      } else {
+        const group = itemsByDay.get(key) ?? []
+        group.push(item)
+        itemsByDay.set(key, group)
       }
-      const group = itemsByDay.get(targetDate) ?? []
-      group.push(item)
-      itemsByDay.set(targetDate, group)
-    } else {
-      unassigned.push(item)
     }
-  }
 
-  // Flatten all items in render order to compute staggered delays
-  const allDayItems: HorizonItemRow[] = []
-  flat.forEach((d) => {
-    const dayItems = itemsByDay.get(d.key) ?? []
-    dayItems.forEach((item) => allDayItems.push(item))
-  })
-  unassigned.forEach((item) => allDayItems.push(item))
+    for (const group of itemsByDay.values()) {
+      group.sort((a, b) => (a.assigned_start_hour ?? 0) - (b.assigned_start_hour ?? 0))
+    }
 
-const getItemDelay = (itemId: string) => {
-    if (!isJustGenerated) return 0
-    const index = allDayItems.findIndex((item) => item.id === itemId)
-    if (index === -1) return 0
-    return index * 60 // 60ms delay between each item (50-80ms range)
-  }
+    // Flatten in render order so the stagger delay is monotonic across the grid.
+    const allDayItems: HorizonItemRow[] = []
+    days.forEach((d) => {
+      ;(itemsByDay.get(d.key) ?? []).forEach((item) => allDayItems.push(item))
+    })
+    unassigned.forEach((item) => allDayItems.push(item))
+    outOfWindow.forEach((item) => allDayItems.push(item))
 
-  if (h.horizon_type === "weekly") {
-    const days = weeks[0]
-    return (
-      <div className="overflow-x-auto">
-        <div className="grid grid-cols-7 gap-2">
-          {days.map((d) => (
-            <div
-              key={`h-${d.key}`}
-              className="flex flex-col items-center justify-center"
-            >
-              <span className="text-xs font-medium">{dayName(d.date)}</span>
-              <span className="text-xs text-muted-foreground">
-                {d.date.getUTCDate()}
-              </span>
-            </div>
-          ))}
-          {days.map((d) => {
-            const dayItems = itemsByDay.get(d.key) ?? []
-            return (
-              <div
-                key={`b-${d.key}`}
-                className={cn(
-                  "min-h-36 border rounded-lg p-2 bg-card",
-                  dayItems.length === 0 && "bg-muted/20 opacity-60",
-                )}
-              >
-                {dayItems.length === 0 ? (
-                  <span className="text-xs text-muted-foreground/30">—</span>
-                ) : (
-                  dayItems.map((item) => (
-                    <CalendarDayChip
-                      key={item.id}
-                      item={item}
-                      request={horizonRequests[item.block_request_id]}
-                      onSelect={() => setSelectedItemId(item.id)}
-                      animationDelay={getItemDelay(item.id)}
-                    />
-                  ))
-                )}
-              </div>
-            )
+    const getItemDelay = (itemId: string) => {
+      if (!isJustGenerated) return 0
+      const index = allDayItems.findIndex((item) => item.id === itemId)
+      if (index === -1) return 0
+      return index * 60
+    }
+
+    const todayKey = dateKey(new Date())
+
+    const renderDayCell = (d: CalDay) => {
+      const dayItems = d.inHorizon ? itemsByDay.get(d.key) ?? [] : []
+      const isExpanded = expandedDays[d.key] ?? false
+      const visible = isExpanded ? dayItems : dayItems.slice(0, MAX_CHIPS_PER_DAY)
+      const hiddenCount = dayItems.length - visible.length
+      const isToday = d.key === todayKey
+
+      return (
+        <div
+          key={d.key}
+          role="gridcell"
+          aria-label={d.date.toLocaleDateString("en-US", {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            timeZone: "UTC",
           })}
+          className={cn(
+            "flex min-h-[112px] flex-col gap-1 rounded-lg border border-border-subtle bg-surface-1 p-1 transition-colors duration-fast",
+            isToday && "border-primary/60 ring-1 ring-primary/30",
+            !d.inHorizon && "bg-transparent opacity-40",
+          )}
+        >
+          <div className="flex items-center justify-between gap-1 px-1">
+            <span
+              className={cn(
+                "text-xs font-medium tabular-nums",
+                isToday ? "text-primary" : "text-muted-foreground",
+                !d.inHorizon && "opacity-60",
+              )}
+            >
+              {d.date.getUTCDate()}
+            </span>
+            {dayItems.length > 0 && (
+              <span className="rounded bg-muted px-1 text-[10px] font-medium tabular-nums text-muted-foreground">
+                {dayItems.length}
+              </span>
+            )}
+          </div>
+
+          {visible.map((item) => (
+            <CalendarDayChip
+              key={item.id}
+              item={item}
+              request={horizonRequests[item.block_request_id]}
+              onSelect={() => setSelectedItemId(item.id)}
+              animationDelay={getItemDelay(item.id)}
+            />
+          ))}
+
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setExpandedDays((prev) => ({ ...prev, [d.key]: true }))}
+              className="rounded px-1 text-left text-[10px] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              +{hiddenCount} more
+            </button>
+          )}
+          {isExpanded && dayItems.length > MAX_CHIPS_PER_DAY && (
+            <button
+              type="button"
+              onClick={() => setExpandedDays((prev) => ({ ...prev, [d.key]: false }))}
+              className="rounded px-1 text-left text-[10px] font-medium text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Show less
+            </button>
+          )}
+        </div>
+      )
+    }
+
+    const scheduledCount = [...itemsByDay.values()].reduce((n, g) => n + g.length, 0)
+    const title = isWeekly
+      ? formatWeekRange(h.horizon_start, h.horizon_end)
+      : formatMonthRange(h.horizon_start, h.horizon_end)
+
+    return (
+      <div className="overflow-hidden rounded-xl border border-border-subtle bg-card">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle px-3 py-2">
+          <h3 className="text-sm font-medium">{title}</h3>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">
+              <span className="font-medium tabular-nums text-foreground">{scheduledCount}</span> scheduled
+            </span>
+            {unassigned.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                <span className="font-medium tabular-nums text-foreground">{unassigned.length}</span> deferred
+              </span>
+            )}
+          </div>
         </div>
 
-        <CalendarLegend />
+        <div className="overflow-x-auto">
+          <div className="min-w-[720px] p-2">
+            <div role="row" className="mb-1 grid grid-cols-7 gap-1">
+              {DAY_NAMES_SHORT.map((name) => (
+                <div
+                  key={name}
+                  role="columnheader"
+                  className="rounded bg-muted/50 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                  {name}
+                </div>
+              ))}
+            </div>
+            <div role="grid" className="grid grid-cols-7 gap-1">
+              {rows.flat().map(renderDayCell)}
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-border-subtle px-3 py-2">
+          <CalendarLegend />
+        </div>
 
         {unassigned.length > 0 && (
-          <div className="mt-4">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Deferred (unassigned date)
-            </p>
-            <div className="flex flex-col gap-2">
+          <div className="border-t border-border-subtle px-3 py-3">
+            <div className="mb-2 flex items-center gap-2">
+              <span aria-hidden="true" className={cn("h-3 w-1 rounded-full", statusDotClass("deferred"))} />
+              <p className="text-xs font-medium text-muted-foreground">
+                Deferred — no date assigned
+              </p>
+            </div>
+            <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
               {unassigned.map((item) => (
+                <CalendarDayChip
+                  key={item.id}
+                  item={item}
+                  request={horizonRequests[item.block_request_id]}
+                  onSelect={() => setSelectedItemId(item.id)}
+                  animationDelay={getItemDelay(item.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {outOfWindow.length > 0 && (
+          <div className="border-t border-border-subtle bg-warning/5 px-3 py-3">
+            <div className="mb-2 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              <p className="text-xs font-medium text-warning">
+                {outOfWindow.length} item{outOfWindow.length === 1 ? "" : "s"} outside this plan window
+              </p>
+            </div>
+            <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+              {outOfWindow.map((item) => (
                 <CalendarDayChip
                   key={item.id}
                   item={item}
@@ -605,79 +836,6 @@ const getItemDelay = (itemId: string) => {
       </div>
     )
   }
-
-  // Monthly view
-  return (
-    <div className="overflow-x-auto">
-      <div className="grid grid-cols-7 gap-px bg-muted border rounded-lg overflow-hidden">
-        {DAY_NAMES_SHORT.map((d, i) => (
-          <div
-            key={`h-${i}`}
-            className="bg-muted/50 py-2 text-center text-xs font-medium"
-          >
-            {d}
-          </div>
-        ))}
-        {flat.map((d, i) => {
-          const dayItems = itemsByDay.get(d.key) ?? []
-          return (
-            <div
-              key={`b-${i}`}
-              className={cn(
-                "relative bg-card min-h-24 p-1",
-                !d.inMonth && "bg-muted/30 opacity-50",
-                d.inMonth && dayItems.length === 0 && "bg-muted/5 opacity-60",
-              )}
-            >
-              {d.inMonth && (
-                <span className={cn(
-                  "absolute top-1 left-1 text-sm",
-                  dayItems.length === 0 ? "text-muted-foreground/30" : "text-muted-foreground/60"
-                )}>
-                  {d.date.getUTCDate()}
-                </span>
-              )}
-              {d.inMonth && dayItems.length > 0 && (
-                <div className="pt-6">
-                  {dayItems.map((item) => (
-                    <CalendarDayChip
-                      key={item.id}
-                      item={item}
-                      request={horizonRequests[item.block_request_id]}
-                      onSelect={() => setSelectedItemId(item.id)}
-                      animationDelay={getItemDelay(item.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      <CalendarLegend />
-
-      {unassigned.length > 0 && (
-        <div className="mt-4">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">
-            Deferred (unassigned date)
-          </p>
-          <div className="flex flex-col gap-2">
-            {unassigned.map((item) => (
-              <CalendarDayChip
-                key={item.id}
-                item={item}
-                request={horizonRequests[item.block_request_id]}
-                onSelect={() => setSelectedItemId(item.id)}
-                animationDelay={getItemDelay(item.id)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-)
-}
 
   const renderHorizonCard = (h: HorizonRow) => {
     const isExpanded = expandedHorizon === h.id
@@ -775,7 +933,7 @@ const getItemDelay = (itemId: string) => {
             <div className="mt-6 space-y-4">
               <div className="flex items-start gap-4">
                 <AvailabilityGauge value={h.projected_availability_pct} />
-                <div className="flex-1 border-l-4 border-primary bg-purple-50 dark:bg-purple-900/20 rounded-md px-4 py-3">
+                <div className="flex-1 rounded-md border-l-4 border-primary bg-primary/5 px-4 py-3">
                   <p className="text-sm whitespace-pre-wrap">
                     {h.summary_explanation ?? "No summary available."}
                   </p>
@@ -822,50 +980,103 @@ const getItemDelay = (itemId: string) => {
   return (
     <TooltipProvider delayDuration={350}>
       <div className="space-y-6">
-      <Card>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-            <div className="flex-1 min-w-48">
-              <label htmlFor="horizon-start-date" className="text-sm font-medium">
-                Start Date
-              </label>
-              <Input
-                id="horizon-start-date"
-                type="date"
-                value={horizonStartDate}
-                onChange={(e) => setHorizonStartDate(e.target.value)}
-              />
+        <Card>
+          <CardContent>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                <div
+                  role="radiogroup"
+                  aria-label="Planning horizon type"
+                  className="inline-flex w-fit rounded-lg border border-border-subtle bg-muted/50 p-1"
+                >
+                  {(["weekly", "monthly"] as const).map((type) => {
+                    const active = horizonType === type
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setHorizonType(type)}
+                        className={cn(
+                          "rounded-md px-3 py-1 text-sm font-medium capitalize transition-colors duration-fast",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          active
+                            ? "bg-card text-foreground shadow-xs"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {type}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="flex-1 min-w-48">
+                  <label htmlFor="horizon-start-date" className="text-sm font-medium">
+                    Start Date
+                  </label>
+                  <Input
+                    id="horizon-start-date"
+                    type="date"
+                    value={horizonStartDate}
+                    onChange={(e) => setHorizonStartDate(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Covers {horizonType === "weekly" ? "7" : "30"} days from the start date
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex rounded-lg border border-border-subtle bg-muted/50 p-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Previous period"
+                      onClick={() => shiftStartDate(-1)}
+                      className="rounded-md"
+                    >
+                      <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    {horizonType === "weekly" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={alignStartToWeek}
+                        className="rounded-md text-xs"
+                      >
+                        This week
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Next period"
+                      onClick={() => shiftStartDate(1)}
+                      className="rounded-md"
+                    >
+                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <AsyncButton
+                  id="generate-plan-btn"
+                  size="sm"
+                  disabled={!horizonStartDate}
+                  onClick={handleGeneratePlan}
+                  successMessage="Plan generated"
+                  errorMessage="Failed to generate plan"
+                  icon={<CalendarDays className="h-4 w-4" />}
+                >
+                  Generate Plan
+                </AsyncButton>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant={horizonType === "weekly" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setHorizonType("weekly")}
-              >
-                Weekly
-              </Button>
-              <Button
-                variant={horizonType === "monthly" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setHorizonType("monthly")}
-              >
-                Monthly
-              </Button>
-            </div>
-            <AsyncButton
-              id="generate-plan-btn"
-              size="sm"
-              disabled={!horizonStartDate}
-              onClick={handleGeneratePlan}
-              successMessage="Plan generated"
-              errorMessage="Failed to generate plan"
-              icon={<CalendarDays className="h-4 w-4" />}
-            >
-              Generate Plan
-            </AsyncButton>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
       {horizonsLoading ? (
         <div className="space-y-3">
@@ -883,7 +1094,7 @@ const getItemDelay = (itemId: string) => {
               title="No planning horizons generated yet"
               description="Generate a weekly or monthly horizon plan to get started."
               actionLabel="Generate a Plan"
-              onAction={() => document.getElementById("generate-plan-btn")?.click()}
+              onAction={handleGeneratePlan}
             />
           </CardContent>
         </Card>

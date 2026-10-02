@@ -122,7 +122,8 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
             {loading ? (
               <Skeleton className="h-8 w-52 rounded-lg" />
             ) : (
-              <Select
+              <div className="animate-fade-in">
+                <Select
                 value={selectedCorridorId == null ? "" : String(selectedCorridorId)}
                 onValueChange={(value) =>
                   setSelectedCorridorId(
@@ -164,7 +165,8 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
                       ))
                   )}
                 </SelectContent>
-              </Select>
+                </Select>
+              </div>
             )}
             <Button
               variant="ghost"

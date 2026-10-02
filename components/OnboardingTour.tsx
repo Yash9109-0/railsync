@@ -267,7 +267,7 @@ export function OnboardingTour({
     <div
       ref={popoverRef}
       className={cn(
-        "fixed z-[10000] w-80 max-w-[90vw] pointer-events-auto animate-in fade-in zoom-in-95 duration-200",
+        "fixed z-[10000] w-80 max-w-[90vw] pointer-events-auto animate-in fade-in zoom-in-95 duration-base",
         "rounded-xl border bg-popover text-popover-foreground shadow-xl"
       )}
       style={{

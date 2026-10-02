@@ -168,7 +168,7 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
           ))}
         </div>
 
-        <div className="relative w-full max-w-3xl mx-auto aspect-[3/1]">
+        <div className="relative w-full aspect-[3/1]">
 <svg
              className="absolute inset-0 h-full w-full"
              viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}

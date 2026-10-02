@@ -149,7 +149,9 @@ export async function generateHorizonPlan(
       throw new Error(`ML API Failed with status: ${response.status}`);
     }
 
-    const solverResults = await response.json();
+    const solverResponse = await response.json();
+    const solverResults = solverResponse.results ?? solverResponse;
+    const solverUsed = solverResponse.solver_used ?? 'or_tools';
 
     // 5. Create Horizon Row (CP-SAT success)
     const { data: horizon, error: horizonErr } = await supabase
@@ -161,7 +163,7 @@ export async function generateHorizonPlan(
         status: 'draft',
         generated_at: new Date().toISOString(),
         corridor_id: corridorId ?? null,
-        solver_used: 'cp-sat' // <--- New DB flag
+        solver_used: solverUsed
       })
       .select('id')
       .single<{ id: string }>();
@@ -294,7 +296,7 @@ export async function generateHorizonPlanGreedy(
       status: 'draft',
       generated_at: new Date().toISOString(),
       corridor_id: corridorId ?? null,
-      solver_used: 'greedy' // <--- Explicitly tagged as fallback
+      solver_used: 'heuristic' // <--- Explicitly tagged as fallback
     })
     .select('id')
     .single<{ id: string }>()
@@ -305,7 +307,7 @@ export async function generateHorizonPlanGreedy(
   }
 
   const horizonId = horizon.id
-  console.log('[optimizer] Created horizon (Greedy)', { horizonId, horizon_type: horizonType, corridor_id: corridorId ?? null })
+  console.log('[optimizer] Created horizon (Heuristic)', { horizonId, horizon_type: horizonType, corridor_id: corridorId ?? null })
 
   let segmentIds: number[] | undefined
   if (corridorId != null) {
@@ -731,7 +733,7 @@ export async function generateHorizonPlanGreedy(
         `${horizonType === 'weekly' ? 'Weekly' : 'Monthly'} block plan for ${startDate.toISOString().slice(0, 10)} has been generated with ${scheduled} scheduled and ${deferred} deferred requests. Projected track availability: ${projectedAvailabilityPct}%.`,
         `/dashboard/control?horizon=${horizonId}`
       )
-      console.log('[optimizer] Notified control officers of horizon plan completion (greedy)')
+      console.log('[optimizer] Notified control officers of horizon plan completion (heuristic)')
     }
   } catch (notifyErr) {
     console.error('[optimizer] Failed to notify control officers:', notifyErr)

@@ -144,15 +144,19 @@ def solve_horizon(requests, segment_capacity_mins, horizon_total_mins):
     # 6. Return results for every input request, even when only a feasible
     #    (not proven optimal) solution was found within the time limit.
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return [
-            {
-                "id": r["id"],
-                "scheduled": False,
-                "start_mins": None,
-                "duration_mins": int(r["duration_mins"]),
-            }
-            for r in records
-        ]
+        return {
+            "results": [
+                {
+                    "id": r["id"],
+                    "scheduled": False,
+                    "start_mins": None,
+                    "duration_mins": int(r["duration_mins"]),
+                }
+                for r in records
+            ],
+            "solver_used": "heuristic",
+            "solver_label": "Heuristic (Fallback)",
+        }
 
     results = []
     for idx, rec in enumerate(records):
@@ -164,4 +168,8 @@ def solve_horizon(requests, segment_capacity_mins, horizon_total_mins):
             "start_mins": int(start_mins) if start_mins is not None else None,
             "duration_mins": int(rec["duration_mins"]),
         })
-    return results
+    return {
+        "results": results,
+        "solver_used": "or_tools",
+        "solver_label": "OR-Tools Optimized",
+    }
