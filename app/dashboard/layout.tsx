@@ -40,7 +40,7 @@ export default async function DashboardLayout({
           userId={user.id}
         />
         <CorridorProvider defaultCorridorId={profile?.assigned_corridor_id ?? null}>
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto bg-[#f5f0ff]">
             {/* ── Ambient background glows — decorative page atmosphere ──
                 Viewport-fixed so they don't scroll with the content, and at a
                 negative z-index so they sit behind every element (cards, top
@@ -63,7 +63,7 @@ export default async function DashboardLayout({
               }}
             />
             <DashboardTopBar />
-            <div className="page-container py-6 lg:py-8">
+            <div className="page-container py-0 m-0 w-full h-full min-h-screen !bg-[#f5f0ff]">
               <PageTransition>{children}</PageTransition>
             </div>
             {/* Chart gradient definitions - shared across all dashboard pages */}

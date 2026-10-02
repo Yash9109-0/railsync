@@ -29,8 +29,8 @@ export function DashboardPageHeader({
   return (
     <header
       className={cn(
-        "flex items-start justify-between gap-4 flex-wrap",
-        "divider-gradient pb-4",
+        "flex items-start justify-between gap-2 flex-wrap",
+        "divider-gradient pb-2 bg-transparent",
       )}
     >
       <div className="flex items-center gap-3">

@@ -27,8 +27,6 @@ import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   CheckCircle,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   LogOut,
   Moon,
@@ -51,22 +49,7 @@ interface DashboardSidebarProps {
   userId: string;
 }
 
-const COLLAPSED_STORAGE_KEY = "rail-sync-sidebar-collapsed";
 const WELCOME_BACK_KEY = "rail-sync-welcome-back-shown";
-
-const NARROW_QUERY = "(max-width: 768px)";
-
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const update = () => setMatches(media.matches);
-    setMatches(media.matches);
-    media.addEventListener?.("change", update);
-    return () => media.removeEventListener?.("change", update);
-  }, [query]);
-  return matches;
-}
 
 type ActivityKind = "scored" | "approved" | "completed" | "defect";
 
@@ -145,15 +128,6 @@ export function DashboardSidebar({
   const [showWelcome, setShowWelcome] = useState(false);
 
   const { hasCompleted, startTour } = useOnboardingTour(userId);
-
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => {
-    const saved = localStorage.getItem(COLLAPSED_STORAGE_KEY);
-    setCollapsed(saved === "true");
-  }, []);
-  useEffect(() => {
-    localStorage.setItem(COLLAPSED_STORAGE_KEY, String(collapsed));
-  }, [collapsed]);
 
   useEffect(() => {
     const hasShown = sessionStorage.getItem(WELCOME_BACK_KEY);
@@ -293,9 +267,6 @@ export function DashboardSidebar({
     };
   }, [fetchActivity]);
 
-  const isNarrow = useMediaQuery(NARROW_QUERY);
-  const showIconsOnly = collapsed || isNarrow;
-
   const visibleLinks: NavLink[] =
     role === "admin"
       ? NAV_LINKS
@@ -332,98 +303,52 @@ export function DashboardSidebar({
     pathname === href || pathname.startsWith(href + "/");
 
   const baseLinkCls =
-    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all";
+    "relative isolate flex h-[46px] items-center gap-3 rounded-xl px-4 py-3 text-[15px] font-bold leading-none transition-all";
 
-  const labelCls = cn(
-    "truncate transition-all",
-    "hidden md:inline-block",
-    collapsed && "md:hidden",
-  );
+  const activePillCls =
+    "absolute inset-x-0 top-1/2 -z-10 h-[38px] -translate-y-1/2 rounded-xl bg-gradient-primary";
 
-  const activeLinkCls = "bg-gradient-primary text-primary-foreground";
+  const labelCls = "min-w-0 whitespace-normal leading-tight";
+
+  const activeLinkCls = "text-primary-foreground";
   const inactiveLinkCls = "text-muted-foreground hover:bg-primary-hover hover:text-foreground";
 
   return (
-    <aside
-      className={cn(
-        "flex flex-col border-r bg-background transition-[width] duration-slow",
-        "w-16 md:w-64",
-        collapsed && "md:w-16",
-      )}
-    >
-      <div className="flex h-14 items-center justify-between px-3">
+    <aside className="flex h-screen w-[260px] min-w-[260px] max-w-[260px] flex-col overflow-y-auto overflow-x-hidden no-scrollbar border-r bg-background">
+      {/* Logo area */}
+      <div className="flex h-[60px] items-center px-4">
         <Link href="/dashboard" className="flex items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <TrainFront className="h-4 w-4" />
           </div>
-          <span
-            className={cn(
-              "text-xl font-bold whitespace-nowrap text-foreground font-heading",
-              "hidden md:inline-block",
-              collapsed && "md:hidden",
-            )}
-          >
+          <span className="text-[22px] font-black whitespace-nowrap text-foreground font-heading">
             RailSync
           </span>
         </Link>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          className="hidden shrink-0 md:inline-flex"
-          onClick={() => setCollapsed((v) => !v)}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          )}
-        </Button>
       </div>
 
-      <TooltipProvider delayDuration={350}>
-        <nav className="flex-1 space-y-1 px-2 py-4">
-          {visibleLinks.map((link) => {
-            const Icon: LucideIcon = link.icon;
-            const linkCls = cn(
-              baseLinkCls,
-              isActive(link.href)
-                ? activeLinkCls
-                : inactiveLinkCls,
-              showIconsOnly && "justify-center",
-            );
+      <nav className="flex flex-1 flex-col gap-1.5 px-2 py-2">
+        {visibleLinks.map((link) => {
+          const Icon: LucideIcon = link.icon;
+          const active = isActive(link.href);
+          const linkCls = cn(
+            baseLinkCls,
+            active ? activeLinkCls : inactiveLinkCls,
+          );
 
-            const linkNode = (
-              <Link href={link.href} className={linkCls} key={link.href}>
-                <Icon className="h-5 w-5 shrink-0" />
-                <span className={labelCls}>{link.label}</span>
-              </Link>
-            );
-
-            if (showIconsOnly) {
-              return (
-                <Tooltip key={link.href}>
-                  <TooltipTrigger asChild>{linkNode}</TooltipTrigger>
-                  <TooltipContent side="right">{link.label}</TooltipContent>
-                </Tooltip>
-              );
-            }
-            return linkNode;
-          })}
-        </nav>
-      </TooltipProvider>
+          return (
+            <Link href={link.href} className={linkCls} key={link.href}>
+              {active && <span aria-hidden="true" className={activePillCls} />}
+              <Icon className="w-[22px] h-[22px] shrink-0" />
+              <span className={labelCls}>{link.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
 
       {/* Recent activity — compact live feed of the latest actions */}
-      <div
-        className={cn(
-          "px-2 pb-2",
-          "hidden md:block",
-          collapsed && "md:hidden",
-        )}
-      >
-        <p className="px-3 pb-1 text-xs font-semibold text-muted-foreground">
+      <div className="px-2 pb-2">
+        <p className="px-3 pb-1 text-[13px] font-bold text-black">
           Recent Activity
         </p>
         {loadingActivity ? (
@@ -441,21 +366,21 @@ export function DashboardSidebar({
               return (
                 <li
                   key={item.id}
-                  className="flex items-center gap-2 rounded-md px-3 py-1 transition-colors hover:bg-primary-hover"
+                  className="flex items-start gap-2 rounded-md px-3 py-1 transition-colors hover:bg-primary-hover"
                 >
                   <Icon
                     className={cn(
-                      "h-3 w-3 shrink-0",
+                      "mt-0.5 h-3 w-3 shrink-0",
                       ACTIVITY_ICON_CLS[item.kind],
                     )}
                   />
                   <span
-                    className="min-w-0 flex-1 truncate text-xs"
+                    className="min-w-0 flex-1 whitespace-normal text-[12px] font-bold leading-4 text-black"
                     title={item.description}
                   >
                     {item.description}
                   </span>
-                  <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+                  <span className="shrink-0 whitespace-nowrap text-[12px] text-muted-foreground">
                     {relativeTime(item.timestamp, activityNow)}
                   </span>
                 </li>
@@ -476,20 +401,16 @@ export function DashboardSidebar({
         )}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <Avatar className="h-9 w-9 shrink-0">
+          <Avatar className="w-9 h-9 shrink-0">
             <AvatarFallback userId={userId} name={displayName}>
               {initials}
             </AvatarFallback>
           </Avatar>
 
-          <div
-            className={cn(
-              "flex min-w-0 flex-1 flex-col",
-              "hidden md:block",
-              collapsed && "md:hidden",
-            )}
-          >
-            <span className="block font-medium truncate">{displayName}</span>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="block whitespace-normal text-[14px] font-bold leading-tight text-black">
+              {displayName}
+            </span>
             <Badge variant="outline" className="w-fit text-xs">
               {roleLabel}
             </Badge>
