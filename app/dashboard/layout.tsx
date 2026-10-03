@@ -32,7 +32,13 @@ export default async function DashboardLayout({
   return (
     <OnboardingWrapper userId={user.id} role={profile?.role ?? null}>
       <LoadingBar />
-      <div className="flex min-h-screen">
+      {/* ── Dashboard shell — the ONLY full-viewport box. ────────────────
+          `h-screen overflow-hidden` clips this subtree so the document
+          itself never scrolls; `main` below is the single scroll container.
+          Anything rendered as a *sibling* of this div (rather than inside
+          `main`) must be `fixed`/`absolute`, otherwise it adds height past
+          100vh and brings back the second page scrollbar. */}
+      <div className="flex h-screen overflow-hidden">
         <DashboardSidebar
           role={profile?.role ?? null}
           fullName={profile?.full_name ?? null}
@@ -40,7 +46,10 @@ export default async function DashboardLayout({
           userId={user.id}
         />
         <CorridorProvider defaultCorridorId={profile?.assigned_corridor_id ?? null}>
-          <main className="flex-1 overflow-y-auto bg-[#f5f0ff]">
+          {/* Sole scroll container: `min-w-0` keeps the flex item from being
+              widened by the 960px-min tables inside it (which would make
+              `overflow-x` resolve to `auto` and add a horizontal scrollbar). */}
+          <main className="min-w-0 flex-1 overflow-y-auto bg-[#f5f0ff]">
             {/* ── Ambient background glows — decorative page atmosphere ──
                 Viewport-fixed so they don't scroll with the content, and at a
                 negative z-index so they sit behind every element (cards, top
@@ -63,7 +72,7 @@ export default async function DashboardLayout({
               }}
             />
             <DashboardTopBar />
-            <div className="page-container py-0 m-0 w-full h-full min-h-screen !bg-[#f5f0ff]">
+            <div className="page-container py-0 m-0 w-full !bg-[#f5f0ff]">
               <PageTransition>{children}</PageTransition>
             </div>
             {/* Chart gradient definitions - shared across all dashboard pages */}

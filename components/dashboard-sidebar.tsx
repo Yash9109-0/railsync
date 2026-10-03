@@ -313,8 +313,11 @@ export function DashboardSidebar({
   const activeLinkCls = "text-primary-foreground";
   const inactiveLinkCls = "text-muted-foreground hover:bg-primary-hover hover:text-foreground";
 
+  // `h-full min-h-0` (not `h-screen`) so the sidebar tracks the shell's height
+  // instead of redeclaring it. It keeps its own `no-scrollbar` scroller for long
+  // nav menus, which is independent of the page's single `main` scrollbar.
   return (
-    <aside className="flex h-screen w-[260px] min-w-[260px] max-w-[260px] flex-col overflow-y-auto overflow-x-hidden no-scrollbar border-r bg-background">
+    <aside className="flex h-full min-h-0 w-[260px] min-w-[260px] max-w-[260px] flex-col overflow-y-auto overflow-x-hidden no-scrollbar border-r bg-background">
       {/* Logo area */}
       <div className="flex h-[60px] items-center px-4">
         <Link href="/dashboard" className="flex items-center gap-3">

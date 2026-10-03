@@ -526,7 +526,7 @@ export default function FieldPage() {
     )
 
   return (
-    <div className="w-full space-y-8 min-h-screen">
+    <div className="w-full space-y-8">
       <DashboardPageHeader
         icon={MapPin}
         title="Field Execution Dashboard"

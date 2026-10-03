@@ -812,7 +812,7 @@ export default function MaintenancePage() {
   }
 
   return (
-    <div className="w-full flex-1 h-full min-h-screen m-0 p-3 !bg-[#f5f0ff]">
+    <div className="w-full m-0 p-3 !bg-[#f5f0ff]">
       <DashboardPageHeader
         icon={Wrench}
         title="Maintenance"
@@ -858,7 +858,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="segment"
-                    className="text-xs font-semibold text-slate-700 leading-none mb-1 block"
+                    className="text-xs font-bold text-black leading-none mb-1 block"
                   >
                     Segment
                   </label>
@@ -900,7 +900,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="department"
-                    className="text-xs font-semibold text-slate-700 leading-none mb-1 block"
+                    className="text-xs font-bold text-black leading-none mb-1 block"
                   >
                     Department
                   </label>
@@ -939,7 +939,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="defect-type"
-                    className="text-xs font-semibold text-slate-700 leading-none mb-1 block"
+                    className="text-xs font-bold text-black leading-none mb-1 block"
                   >
                     Defect Type
                   </label>
@@ -975,7 +975,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="severity"
-                    className="text-xs font-semibold text-slate-700 leading-none mb-1 block"
+                    className="text-xs font-bold text-black leading-none mb-1 block"
                   >
                     Severity
                   </label>
@@ -1014,7 +1014,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="due-date"
-                    className="text-xs font-semibold text-slate-700 leading-none mb-1 block"
+                    className="text-xs font-bold text-black leading-none mb-1 block"
                   >
                     Due Date
                   </label>
@@ -1040,7 +1040,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="requested-start"
-                    className="text-xs font-semibold text-slate-700 leading-none mb-1 block"
+                    className="text-xs font-bold text-black leading-none mb-1 block"
                   >
                     Requested Start
                   </label>
@@ -1065,7 +1065,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="requested-duration-mins"
-                    className="text-xs font-semibold text-slate-700 leading-none mb-1 block"
+                    className="text-xs font-bold text-black leading-none mb-1 block"
                   >
                     Duration (minutes)
                   </label>
@@ -1094,7 +1094,7 @@ export default function MaintenancePage() {
               <div className="w-full">
                 <label
                   htmlFor="work-description"
-                  className="text-xs font-semibold text-slate-700 leading-none mb-1 block"
+                  className="text-xs font-bold text-black leading-none mb-1 block"
                 >
                   Work Description
                 </label>
@@ -1122,7 +1122,7 @@ export default function MaintenancePage() {
               <div className="w-full">
                 <label
                   htmlFor="justification"
-                  className="text-xs font-semibold text-slate-700 leading-none mb-1 block"
+                  className="text-xs font-bold text-black leading-none mb-1 block"
                 >
                   Justification
                 </label>
@@ -1148,7 +1148,7 @@ export default function MaintenancePage() {
 
               {/* Checkbox */}
               <div className="pt-0.5">
-                <label className="flex items-center gap-2 text-xs text-slate-700 font-medium cursor-pointer select-none">
+                <label className="flex items-center gap-2 text-xs text-black font-bold cursor-pointer select-none">
                   <input
                     id="request-block"
                     type="checkbox"

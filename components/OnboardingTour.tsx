@@ -407,13 +407,16 @@ export function OnboardingTrigger({ userId, role, children }: OnboardingTriggerP
   );
 }
 
+/* Rendered as a sibling of the dashboard's `h-screen` shell, so it MUST be
+   `fixed` — in normal flow it would add height past 100vh and produce a
+   second, document-level scrollbar alongside the `main` scroller. */
 function TourReplayButton({ role, onReplay }: { role: UserRole; onReplay: () => void }) {
   return (
     <Button
       variant="ghost"
       size="sm"
       onClick={onReplay}
-      className="gap-1.5 text-xs"
+      className="fixed bottom-4 left-4 z-30 gap-1.5 text-xs shadow-md"
     >
       <HelpCircle className="h-3.5 w-3.5" />
       Show {getRoleDisplayName(role)} tour again
