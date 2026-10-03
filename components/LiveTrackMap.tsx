@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Train } from "lucide-react";
+import { Activity, Map as MapIcon, Train, Package } from "lucide-react";
+import { useCorridor } from "@/context/CorridorContext";
+import { LIVE_TRAIN_DATASET, type LiveTrain } from "./MapPreview";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import MapPreview, { CORRIDOR_DATA } from "./MapPreview";
+
+export { CORRIDOR_DATA };
 
 export interface TimetableEntry {
   train_number: string;
@@ -15,7 +21,23 @@ export interface LiveTrackMapProps {
   timetable?: TimetableEntry[];
 }
 
-const STATIONS = ["STN1", "STN2", "STN3", "STN4", "STN5"] as const;
+const CORRIDOR_1_STATIONS: readonly string[] = [
+  "Raipur Jn",
+  "Saraswati Nagar",
+  "Sarona",
+  "Kumhari",
+  "Bhilai",
+];
+
+const CORRIDOR_2_STATIONS: readonly string[] = [
+  "Raipur Jn",
+  "WRS Colony",
+  "Urkura",
+  "Mandhar",
+  "Silyari",
+];
+
+const STATIONS = CORRIDOR_1_STATIONS;
 const NUM_SEGMENTS = STATIONS.length - 1;
 const MINUTES_PER_SEGMENT = 20;
 const TOTAL_MINUTES = NUM_SEGMENTS * MINUTES_PER_SEGMENT;
@@ -105,16 +127,26 @@ function computeActiveTrains(rows: TimetableEntry[], now: number): ComputedTrain
   return positions.map((p, i) => {
     const rowWithTrack = rows.find((r) => r.train_number === p.train_number && r.track);
     const resolved = rowWithTrack? resolveTrackKey(rowWithTrack.track) : null;
+    const liveMeta = LIVE_TRAIN_DATASET.find(
+      (lt) => lt.trainNo === p.train_number || lt.id === p.train_number
+    );
+    const metaResolved = liveMeta ? resolveTrackKey(liveMeta.track) : null;
+
     return {
       train_number: p.train_number,
       segmentIndex: p.segmentIndex,
-      progress: p.progress,
-      track: resolved?? assignTrack(i, positions.length),
+      progress: liveMeta ? liveMeta.progress : p.progress,
+      track: metaResolved ?? resolved ?? assignTrack(i, positions.length),
     };
   });
 }
 
 export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
+  const { selectedCorridorId } = useCorridor();
+  const isCorridor2 = selectedCorridorId === 2 || String(selectedCorridorId).includes('2');
+  const stations = isCorridor2 ? CORRIDOR_2_STATIONS : CORRIDOR_1_STATIONS;
+  const currentCorridorKey = isCorridor2 ? "corridor-2" : "corridor-1";
+  const [viewMode, setViewMode] = useState<"map" | "schematic">("map");
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -122,14 +154,30 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
     return () => clearInterval(id);
   }, []);
 
+  const activeTrains = useMemo(() => {
+    return LIVE_TRAIN_DATASET.filter((t) => t.corridorId === currentCorridorKey);
+  }, [currentCorridorKey]);
+
   const trains = useMemo(() => {
     const { start, end } = todayBounds(new Date(now));
     const todayRows = timetable.filter((r) => {
       const t = Date.parse(r.scheduled_time);
       return Number.isFinite(t) && t >= start && t < end;
     });
-    return computeActiveTrains(todayRows, now);
-  }, [timetable, now]);
+    const computed = computeActiveTrains(todayRows, now);
+    if (computed.length > 0) return computed;
+
+    return activeTrains.map((t) => ({
+      train_number: t.trainNo,
+      segmentIndex: Math.min(NUM_SEGMENTS - 1, Math.max(0, Math.floor(t.progress * NUM_SEGMENTS))),
+      progress: t.progress,
+      track: (t.track.toLowerCase().includes("down")
+        ? "down"
+        : t.track.toLowerCase().includes("loop") || t.track.toLowerCase().includes("siding")
+        ? "loop"
+        : "up") as TrackId,
+    }));
+  }, [timetable, now, activeTrains]);
 
   const occupied = useMemo(() => {
     const occ: Record<TrackId, Set<number>> = {
@@ -144,31 +192,74 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between font-semibold">
-          <span className="flex items-center gap-2">
-            Live Corridor View
-            <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 dark:bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-400 dark:bg-green-400 animate-pulse"></span>
+        <CardTitle className="flex flex-wrap items-center justify-between gap-3 font-semibold">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-2">
+              Live Corridor View
+              <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 dark:bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-green-400 dark:bg-green-400 animate-pulse"></span>
+                </span>
+                Live
               </span>
-              Live
             </span>
-          </span>
-          <span className="text-xs font-medium text-muted-foreground bg-muted px-3 py-1 rounded-full border">
-            {trains.length > 0? `${trains.length} active train${trains.length === 1? "" : "s"}` : "No active trains"}
-          </span>
+            {activeTrains.length > 0 ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {activeTrains.length} Active Trains
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700">
+                No active trains
+              </span>
+            )}
+          </div>
+
+          {/* View mode toggle */}
+          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-border">
+            <button
+              type="button"
+              onClick={() => setViewMode("map")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all",
+                viewMode === "map"
+                  ? "bg-white text-primary shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <MapIcon className="w-3.5 h-3.5" />
+              <span>Interactive Map</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("schematic")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all",
+                viewMode === "schematic"
+                  ? "bg-white text-primary shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Track Schematic</span>
+            </button>
+          </div>
         </CardTitle>
       </CardHeader>
 
       <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground">
-          {TRACKS.map((track) => (
-            <span key={track.id}>{track.label}</span>
-          ))}
-        </div>
+        {viewMode === "map" ? (
+          <MapPreview className="w-full" showControls={true} trains={activeTrains} />
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground">
+              {TRACKS.map((track) => (
+                <span key={track.id}>{track.label}</span>
+              ))}
+            </div>
 
-        <div className="relative w-full aspect-[3/1]">
+            <div className="relative w-full aspect-[3/1]">
 <svg
              className="absolute inset-0 h-full w-full"
              viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
@@ -243,7 +334,7 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
             )}
 
             {TRACKS.map((track) =>
-              STATIONS.map((_, i) => (
+              stations.map((_: string, i: number) => (
                 <g key={`station-${track.id}-${i}`}>
                   <circle cx={stationX(i)} cy={track.y} r={20} className="fill-primary/15" />
                   <circle cx={stationX(i)} cy={track.y} r={STATION_R} className="fill-white stroke-primary stroke-2 dark:fill-gray-900" />
@@ -251,8 +342,8 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
               ))
             )}
 
-            {STATIONS.map((label, i) => (
-              <text key={`stationlabel-${label}`} x={stationX(i)} y={LABEL_Y} textAnchor="middle" fontSize={12} fontWeight={700} className="fill-gray-700 dark:fill-gray-300">
+            {stations.map((label: string, i: number) => (
+              <text key={`stationlabel-${label}`} x={stationX(i)} y={LABEL_Y} textAnchor="middle" fontSize={11} fontWeight={700} className="fill-gray-700 dark:fill-gray-300">
                 {label}
               </text>
             ))}
@@ -282,15 +373,44 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
           {trains.map((t) => {
             const x = stationX(t.segmentIndex) + t.progress * SEG_LEN;
             const track = TRACKS.find((tr) => tr.id === t.track);
-            const y = track? track.y : 0;
+            const y = track ? track.y : 0;
+            const liveMeta = LIVE_TRAIN_DATASET.find(
+              (lt) => lt.trainNo === t.train_number || lt.id === t.train_number
+            );
+            const isMaterial = liveMeta?.category === "Material";
+
             return (
-              <div key={t.train_number} className="pointer-events-none absolute z-20" style={{ left: `${(x / VIEW_W) * 100}%`, top: `${(y / VIEW_H) * 100}%`, transform: "translate(-50%, -140%)" }}>
+              <div
+                key={t.train_number}
+                className="pointer-events-none absolute z-20"
+                style={{
+                  left: `${(x / VIEW_W) * 100}%`,
+                  top: `${(y / VIEW_H) * 100}%`,
+                  transform: "translate(-50%, -140%)",
+                }}
+              >
                 <div className="flex flex-col items-center">
-                  <div className="flex items-center gap-1 bg-surface-1 dark:bg-surface-2 px-2 py-1 rounded-md shadow-sm border text-xs font-semibold text-primary">
-                    <Train className="h-4 w-4 text-primary" />
-                    {t.train_number}
+                  <div
+                    className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1 rounded-md shadow-md border text-xs font-bold",
+                      isMaterial
+                        ? "bg-white text-amber-700 border-amber-500/40"
+                        : "bg-white text-[#7c3aed] border-[#7c3aed]/40"
+                    )}
+                  >
+                    {isMaterial ? (
+                      <Package className="h-3.5 w-3.5 text-amber-600" />
+                    ) : (
+                      <Train className="h-3.5 w-3.5 text-primary" />
+                    )}
+                    <span>{t.train_number}</span>
+                    {isMaterial && (
+                      <span className="bg-amber-600 text-white text-[8px] font-extrabold px-1 rounded">
+                        MAT
+                      </span>
+                    )}
                   </div>
-                  <div className="w-0 h-0 border-x-4 border-t-4 border-x-transparent border-t-surface-1 dark:border-t-gray-800"></div>
+                  <div className="w-0 h-0 border-x-4 border-t-4 border-x-transparent border-t-white"></div>
                 </div>
               </div>
             );
@@ -310,6 +430,8 @@ export default function LiveTrackMap({ timetable = [] }: LiveTrackMapProps) {
           <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-destructive animate-pulse glow-destructive" />Signal Occupied</span>
           <span className="flex items-center gap-2"><Train className="h-4 w-4 text-primary" />Train</span>
         </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

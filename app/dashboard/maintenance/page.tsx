@@ -50,6 +50,12 @@ import {
 import { DashboardPageHeader } from "@/components/dashboard-page-header"
 import { downloadDefectsPdf, type DefectPdfRow } from "@/lib/defects-pdf"
 import type { BlockRequest, Segment, PlanOption, Defect } from "@/lib/types"
+import {
+  CORRIDORS,
+  getSegmentDisplayName,
+  getSegmentsForCorridor,
+} from "@/lib/corridors"
+
 
 interface SegmentOption extends Segment {
   displayName: string
@@ -214,7 +220,7 @@ function getSegmentName(
 ): string {
   if (id == null) return "—"
   const seg = segments.find((s) => s.id === id)
-  return seg ? seg.displayName : String(id)
+  return seg ? seg.displayName : getSegmentDisplayName(id)
 }
 
 function isOverdue(defect: Defect): boolean {
@@ -265,6 +271,36 @@ export default function MaintenancePage() {
   const [reprocessing, setReprocessing] = useState<Record<string, boolean>>({})
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
 
+  const availableSegments = useMemo(() => {
+    const corridorSegments = getSegmentsForCorridor(selectedCorridorId)
+    if (segments.length > 0) {
+      const filtered =
+        selectedCorridorId != null
+          ? segments.filter((s) => s.corridor_id === Number(selectedCorridorId))
+          : segments
+      if (filtered.length > 0) {
+        return filtered.map((seg) => ({
+          ...seg,
+          displayName: getSegmentDisplayName(seg.id, seg.displayName),
+        }))
+      }
+    }
+    return corridorSegments.map((s) => ({
+      id: s.id,
+      name: s.displayName,
+      from_station_id: s.id,
+      to_station_id: s.id + 1,
+      corridor_id: s.corridorId,
+      displayName: s.displayName,
+    }))
+  }, [segments, selectedCorridorId])
+
+  useEffect(() => {
+    if (segmentId && !availableSegments.some((s) => String(s.id) === segmentId)) {
+      setSegmentId("")
+    }
+  }, [availableSegments, segmentId])
+
   useEffect(() => {
     const fetchData = async () => {
       const supabase = createClient()
@@ -295,11 +331,25 @@ export default function MaintenancePage() {
         const segmentsWithOptions: SegmentOption[] = segmentsRes.data.map(
           (seg) => ({
             ...seg,
-            displayName: `${stationMap.get(seg.from_station_id) ?? seg.from_station_id} → ${stationMap.get(seg.to_station_id) ?? seg.to_station_id}`,
+            displayName: getSegmentDisplayName(
+              seg.id,
+              `${stationMap.get(seg.from_station_id) ?? seg.from_station_id} → ${stationMap.get(seg.to_station_id) ?? seg.to_station_id}`,
+            ),
           }),
         )
         setSegments(segmentsWithOptions)
         corridorSegmentIds = segmentsWithOptions.map((s) => s.id)
+      } else {
+        const fallback = getSegmentsForCorridor(selectedCorridorId).map((s) => ({
+          id: s.id,
+          name: s.displayName,
+          from_station_id: s.id,
+          to_station_id: s.id + 1,
+          corridor_id: s.corridorId,
+          displayName: s.displayName,
+        }))
+        setSegments(fallback)
+        corridorSegmentIds = fallback.map((s) => s.id)
       }
 
       if (currentUser) {
@@ -812,7 +862,7 @@ export default function MaintenancePage() {
   }
 
   return (
-    <div className="w-full m-0 p-3 !bg-[#f5f0ff]">
+    <div className="w-full m-0 p-3 bg-[#f5f0ff] dark:bg-slate-950">
       <DashboardPageHeader
         icon={Wrench}
         title="Maintenance"
@@ -821,7 +871,7 @@ export default function MaintenancePage() {
       />
 
       <Tabs defaultValue="log" className="w-full space-y-2 bg-transparent">
-        <TabsList className="bg-[#f5f0ff]">
+        <TabsList className="bg-[#f5f0ff] dark:bg-slate-900 border border-transparent dark:border-slate-800">
           <TabsTrigger value="log" data-tour="combined-form-tab">
             <Plus className="h-4 w-4 mr-2" />
             Log Defect / Request
@@ -839,13 +889,13 @@ export default function MaintenancePage() {
         <TabsContent value="log" className="w-full m-0 mb-0 p-0 bg-transparent">
           <div
             data-tour="combined-form"
-            className="w-full m-0 bg-white rounded-[16px] border border-[#7009c6]/20 shadow-md p-4 space-y-3"
+            className="w-full m-0 bg-white dark:bg-slate-900 rounded-[16px] border border-[#7009c6]/20 dark:border-slate-800 dark:text-slate-100 shadow-md p-4 space-y-3"
           >
             <div className="space-y-0.5">
-              <h2 className="text-base font-bold tracking-tight text-slate-900">
+              <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-slate-100">
                 Log Defect &amp; Request Block
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Record a defect and optionally request a track block in a single
                 action. The defect is always saved; the block request is created
                 only if the checkbox below is checked.
@@ -858,7 +908,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="segment"
-                    className="text-xs font-bold text-black leading-none mb-1 block"
+                    className="text-xs font-bold text-black dark:text-slate-200 leading-none mb-1 block"
                   >
                     Segment
                   </label>
@@ -869,7 +919,7 @@ export default function MaintenancePage() {
                   >
                     <SelectTrigger
                       id="segment"
-                      className="h-9 rounded-[10px] border-[#7009c6]/20 focus:border-[#7009c6] focus:ring-1 focus:ring-[#7009c6] bg-white text-slate-800 text-xs w-full"
+                      className="h-9 rounded-[10px] border-[#7009c6]/20 dark:border-slate-700 focus:border-[#7009c6] focus:ring-1 focus:ring-[#7009c6] bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 dark:placeholder-slate-500 text-xs w-full"
                     >
                       <SelectValue
                         placeholder={
@@ -879,8 +929,8 @@ export default function MaintenancePage() {
                         }
                       />
                     </SelectTrigger>
-                    <SelectContent className="bg-white border-[#7009c6]/20 rounded-xl shadow-lg">
-                      {segments.map((seg) => (
+                    <SelectContent className="bg-white dark:bg-slate-800 border-[#7009c6]/20 dark:border-slate-700 rounded-xl shadow-lg dark:text-slate-100">
+                      {availableSegments.map((seg) => (
                         <SelectItem key={seg.id} value={String(seg.id)}>
                           {seg.displayName}
                         </SelectItem>
@@ -900,7 +950,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="department"
-                    className="text-xs font-bold text-black leading-none mb-1 block"
+                    className="text-xs font-bold text-black dark:text-slate-200 leading-none mb-1 block"
                   >
                     Department
                   </label>
@@ -911,11 +961,11 @@ export default function MaintenancePage() {
                   >
                     <SelectTrigger
                       id="department"
-                      className="h-9 rounded-[10px] border-[#7009c6]/20 focus:border-[#7009c6] focus:ring-1 focus:ring-[#7009c6] bg-white text-slate-800 text-xs w-full"
+                      className="h-9 rounded-[10px] border-[#7009c6]/20 dark:border-slate-700 focus:border-[#7009c6] focus:ring-1 focus:ring-[#7009c6] bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 dark:placeholder-slate-500 text-xs w-full"
                     >
                       <SelectValue placeholder="Select a department" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white border-[#7009c6]/20 rounded-xl shadow-lg">
+                    <SelectContent className="bg-white dark:bg-slate-800 border-[#7009c6]/20 dark:border-slate-700 rounded-xl shadow-lg dark:text-slate-100">
                       {DEPARTMENT_OPTIONS.map((opt) => (
                         <SelectItem key={opt} value={opt}>
                           {opt}
@@ -939,7 +989,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="defect-type"
-                    className="text-xs font-bold text-black leading-none mb-1 block"
+                    className="text-xs font-bold text-black dark:text-slate-200 leading-none mb-1 block"
                   >
                     Defect Type
                   </label>
@@ -950,11 +1000,11 @@ export default function MaintenancePage() {
                   >
                     <SelectTrigger
                       id="defect-type"
-                      className="h-9 rounded-[10px] border-[#7009c6]/20 focus:border-[#7009c6] focus:ring-1 focus:ring-[#7009c6] bg-white text-slate-800 text-xs w-full"
+                      className="h-9 rounded-[10px] border-[#7009c6]/20 dark:border-slate-700 focus:border-[#7009c6] focus:ring-1 focus:ring-[#7009c6] bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 dark:placeholder-slate-500 text-xs w-full"
                     >
                       <SelectValue placeholder="Select a defect type" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white border-[#7009c6]/20 rounded-xl shadow-lg">
+                    <SelectContent className="bg-white dark:bg-slate-800 border-[#7009c6]/20 dark:border-slate-700 rounded-xl shadow-lg dark:text-slate-100">
                       {DEFECT_TYPE_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
                           {opt.label}
@@ -975,7 +1025,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="severity"
-                    className="text-xs font-bold text-black leading-none mb-1 block"
+                    className="text-xs font-bold text-black dark:text-slate-200 leading-none mb-1 block"
                   >
                     Severity
                   </label>
@@ -986,11 +1036,11 @@ export default function MaintenancePage() {
                   >
                     <SelectTrigger
                       id="severity"
-                      className="h-9 rounded-[10px] border-[#7009c6]/20 focus:border-[#7009c6] focus:ring-1 focus:ring-[#7009c6] bg-white text-slate-800 text-xs w-full"
+                      className="h-9 rounded-[10px] border-[#7009c6]/20 dark:border-slate-700 focus:border-[#7009c6] focus:ring-1 focus:ring-[#7009c6] bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 dark:placeholder-slate-500 text-xs w-full"
                     >
                       <SelectValue placeholder="Select a severity" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white border-[#7009c6]/20 rounded-xl shadow-lg">
+                    <SelectContent className="bg-white dark:bg-slate-800 border-[#7009c6]/20 dark:border-slate-700 rounded-xl shadow-lg dark:text-slate-100">
                       {SEVERITY_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
                           {opt.label}
@@ -1014,7 +1064,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="due-date"
-                    className="text-xs font-bold text-black leading-none mb-1 block"
+                    className="text-xs font-bold text-black dark:text-slate-200 leading-none mb-1 block"
                   >
                     Due Date
                   </label>
@@ -1025,7 +1075,7 @@ export default function MaintenancePage() {
                     onChange={(e) => setDueDate(e.target.value)}
                     disabled={loading}
                     required
-                    className="h-9 rounded-[10px] border-[#7009c6]/20 focus:border-[#7009c6] focus-visible:ring-1 focus-visible:ring-[#7009c6] bg-white text-slate-800 text-xs w-full"
+                    className="h-9 rounded-[10px] border-[#7009c6]/20 dark:border-slate-700 focus:border-[#7009c6] focus-visible:ring-1 focus-visible:ring-[#7009c6] bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 dark:placeholder-slate-500 text-xs w-full"
                   />
                   {errors.dueDate && (
                     <p
@@ -1040,7 +1090,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="requested-start"
-                    className="text-xs font-bold text-black leading-none mb-1 block"
+                    className="text-xs font-bold text-black dark:text-slate-200 leading-none mb-1 block"
                   >
                     Requested Start
                   </label>
@@ -1050,7 +1100,7 @@ export default function MaintenancePage() {
                     value={requestedStart}
                     onChange={(e) => setRequestedStart(e.target.value)}
                     disabled={loading}
-                    className="h-9 rounded-[10px] border-[#7009c6]/20 focus:border-[#7009c6] focus-visible:ring-1 focus-visible:ring-[#7009c6] bg-white text-slate-800 text-xs w-full"
+                    className="h-9 rounded-[10px] border-[#7009c6]/20 dark:border-slate-700 focus:border-[#7009c6] focus-visible:ring-1 focus-visible:ring-[#7009c6] bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 dark:placeholder-slate-500 text-xs w-full"
                   />
                   {errors.requestedStart && (
                     <p
@@ -1065,7 +1115,7 @@ export default function MaintenancePage() {
                 <div className="w-full">
                   <label
                     htmlFor="requested-duration-mins"
-                    className="text-xs font-bold text-black leading-none mb-1 block"
+                    className="text-xs font-bold text-black dark:text-slate-200 leading-none mb-1 block"
                   >
                     Duration (minutes)
                   </label>
@@ -1077,7 +1127,7 @@ export default function MaintenancePage() {
                     value={requestedDurationMins}
                     onChange={(e) => setRequestedDurationMins(e.target.value)}
                     disabled={loading}
-                    className="h-9 rounded-[10px] border-[#7009c6]/20 focus:border-[#7009c6] focus-visible:ring-1 focus-visible:ring-[#7009c6] bg-white text-slate-800 text-xs w-full"
+                    className="h-9 rounded-[10px] border-[#7009c6]/20 dark:border-slate-700 focus:border-[#7009c6] focus-visible:ring-1 focus-visible:ring-[#7009c6] bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 dark:placeholder-slate-500 text-xs w-full"
                   />
                   {errors.requestedDurationMins && (
                     <p
@@ -1094,7 +1144,7 @@ export default function MaintenancePage() {
               <div className="w-full">
                 <label
                   htmlFor="work-description"
-                  className="text-xs font-bold text-black leading-none mb-1 block"
+                  className="text-xs font-bold text-black dark:text-slate-200 leading-none mb-1 block"
                 >
                   Work Description
                 </label>
@@ -1106,7 +1156,7 @@ export default function MaintenancePage() {
                   disabled={loading}
                   minLength={10}
                   required
-                  className="h-20 min-h-[5rem] max-h-24 resize-none rounded-[10px] border-[#7009c6]/20 focus:border-[#7009c6] focus-visible:ring-1 focus-visible:ring-[#7009c6] bg-white text-slate-800 text-xs w-full"
+                  className="h-20 min-h-[5rem] max-h-24 resize-none rounded-[10px] border-[#7009c6]/20 dark:border-slate-700 focus:border-[#7009c6] focus-visible:ring-1 focus-visible:ring-[#7009c6] bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 dark:placeholder-slate-500 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs w-full"
                 />
                 {errors.workDescription && (
                   <p
@@ -1122,7 +1172,7 @@ export default function MaintenancePage() {
               <div className="w-full">
                 <label
                   htmlFor="justification"
-                  className="text-xs font-bold text-black leading-none mb-1 block"
+                  className="text-xs font-bold text-black dark:text-slate-200 leading-none mb-1 block"
                 >
                   Justification
                 </label>
@@ -1134,7 +1184,7 @@ export default function MaintenancePage() {
                   disabled={loading}
                   minLength={10}
                   required
-                  className="h-20 min-h-[5rem] max-h-24 resize-none rounded-[10px] border-[#7009c6]/20 focus:border-[#7009c6] focus-visible:ring-1 focus-visible:ring-[#7009c6] bg-white text-slate-800 text-xs w-full"
+                  className="h-20 min-h-[5rem] max-h-24 resize-none rounded-[10px] border-[#7009c6]/20 dark:border-slate-700 focus:border-[#7009c6] focus-visible:ring-1 focus-visible:ring-[#7009c6] bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 dark:placeholder-slate-500 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs w-full"
                 />
                 {errors.justification && (
                   <p
@@ -1148,7 +1198,7 @@ export default function MaintenancePage() {
 
               {/* Checkbox */}
               <div className="pt-0.5">
-                <label className="flex items-center gap-2 text-xs text-black font-bold cursor-pointer select-none">
+                <label className="flex items-center gap-2 text-xs text-black dark:text-slate-200 font-bold cursor-pointer select-none">
                   <input
                     id="request-block"
                     type="checkbox"
@@ -1174,7 +1224,7 @@ export default function MaintenancePage() {
         </TabsContent>
 
         <TabsContent value="register" className="space-y-3 m-0 mb-0 p-0 bg-transparent">
-          <div className="w-full h-auto !bg-[#f5f0ff] rounded-[16px] border border-[#7009c6]/20 shadow-sm p-3">
+          <div className="w-full h-auto bg-[#f5f0ff] dark:bg-slate-900 rounded-[16px] border border-[#7009c6]/20 dark:border-slate-800 shadow-sm p-3">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <h2 className="text-base font-bold tracking-tight text-[#7009c6]">
@@ -1451,7 +1501,7 @@ export default function MaintenancePage() {
                     <SelectTrigger className="w-full sm:w-[170px] h-10 rounded-full border-[#7009c6]/20 bg-white text-slate-800 focus:ring-2 focus:ring-[#7009c6] text-sm shadow-none">
                       <SelectValue placeholder="All Statuses" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white border-[#7009c6]/20 rounded-xl shadow-lg">
+                    <SelectContent className="bg-white dark:bg-slate-800 border-[#7009c6]/20 dark:border-slate-700 rounded-xl shadow-lg dark:text-slate-100">
                       <SelectItem value="all">All Statuses</SelectItem>
                       <SelectItem value="submitted">Submitted</SelectItem>
                       <SelectItem value="scored">Scored</SelectItem>

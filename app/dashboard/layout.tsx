@@ -49,7 +49,7 @@ export default async function DashboardLayout({
           {/* Sole scroll container: `min-w-0` keeps the flex item from being
               widened by the 960px-min tables inside it (which would make
               `overflow-x` resolve to `auto` and add a horizontal scrollbar). */}
-          <main className="min-w-0 flex-1 overflow-y-auto bg-[#f5f0ff]">
+          <main className="min-w-0 flex-1 overflow-y-auto bg-[#f5f0ff] dark:bg-slate-950">
             {/* ── Ambient background glows — decorative page atmosphere ──
                 Viewport-fixed so they don't scroll with the content, and at a
                 negative z-index so they sit behind every element (cards, top
@@ -72,7 +72,7 @@ export default async function DashboardLayout({
               }}
             />
             <DashboardTopBar />
-            <div className="page-container py-0 m-0 w-full !bg-[#f5f0ff]">
+            <div className="page-container py-0 m-0 w-full bg-[#f5f0ff] dark:bg-slate-950">
               <PageTransition>{children}</PageTransition>
             </div>
             {/* Chart gradient definitions - shared across all dashboard pages */}

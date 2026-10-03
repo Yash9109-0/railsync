@@ -1,72 +1,57 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-} from "react-leaflet"
-import L from "leaflet"
-import { cn } from "@/lib/utils"
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2, MapPin } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { LiveCorridorLeafletMapProps } from "./LiveCorridorLeafletMap";
 
-if (typeof window !== "undefined") {
-  delete (L.Icon.Default.prototype as L.Icon.Default & {
-    _getIconUrl?: unknown
-  })._getIconUrl
+export {
+  CORRIDOR_DATA,
+  LIVE_TRAIN_DATASET,
+  type LiveTrain,
+  type StationData,
+  type CorridorDetail,
+  type CorridorKey,
+} from "./LiveCorridorLeafletMap";
 
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl:
-      "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-    iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  })
-}
+// Client-only dynamic import of react-leaflet component to avoid Next.js SSR window errors
+const DynamicCorridorMap = dynamic(
+  () => import("./LiveCorridorLeafletMap"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="relative w-full h-[450px] min-h-[380px] rounded-2xl border border-border bg-slate-50 flex flex-col items-center justify-center p-6 space-y-3">
+        <div className="flex items-center gap-2 text-primary font-semibold text-sm">
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          <span>Loading Live Corridor Map...</span>
+        </div>
+        <p className="text-xs text-muted-foreground text-center max-w-sm">
+          Initializing Raipur – Durg and Raipur – Bilaspur rail telemetry coordinates
+        </p>
+        <div className="w-full max-w-md space-y-2 pt-2">
+          <Skeleton className="h-4 w-full rounded" />
+          <Skeleton className="h-4 w-3/4 rounded mx-auto" />
+        </div>
+      </div>
+    ),
+  }
+);
 
-interface MapPreviewProps {
-  lat: number | null
-  lng: number | null
-  className?: string
+export interface MapPreviewProps extends LiveCorridorLeafletMapProps {
+  lat?: number | null;
+  lng?: number | null;
+  trains?: import("./LiveCorridorLeafletMap").LiveTrain[];
 }
 
 export default function MapPreview({
-  lat,
-  lng,
   className,
+  showControls = true,
+  trains,
 }: MapPreviewProps) {
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  if (!mounted) {
-    return (
-      <div
-        className={cn(
-          "flex items-center justify-center rounded-md border bg-muted/30 text-sm text-muted-foreground",
-          className,
-        )}
-      >
-        Map preview loads after submit
-      </div>
-    )
-  }
-
-  const position: L.LatLngExpression =
-    lat != null && lng != null ? [lat, lng] : [20, 0]
-
   return (
-    <MapContainer
-      center={position}
-      zoom={lat != null && lng != null ? 13 : 2}
-      className={cn("rounded-md border", className)}
-      scrollWheelZoom={false}
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      {lat != null && lng != null && <Marker position={[lat, lng]} />}
-    </MapContainer>
-  )
+    <div className={cn("w-full", className)}>
+      <DynamicCorridorMap showControls={showControls} trains={trains} />
+    </div>
+  );
 }

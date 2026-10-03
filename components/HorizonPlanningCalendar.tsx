@@ -854,34 +854,23 @@ export default function HorizonPlanningCalendar() {
                   {h.horizon_type === "weekly" ? "Weekly" : "Monthly"}
                 </Badge>
                 
-                {h.solver_used === 'cp-sat' ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Badge variant="success" className="gap-1">
-                        Optimal (CP-SAT)
-                        <HelpCircle className="h-3 w-3" aria-hidden="true" />
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs">
-                      <p className="text-xs">
-                        This plan was generated using a mathematical constraint solver that guarantees the best possible schedule given current constraints.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
+                {h.solver_used === "OR-Tools" ||
+                h.solver_used === "CP-SAT" ||
+                h.solver_used === "OR-Tools (CP-SAT)" ||
+                h.solver_used === "or_tools" ||
+                h.solver_used === "cp-sat" ||
+                (typeof h.solver_used === "string" &&
+                  (h.solver_used.toLowerCase().includes("or-tools") ||
+                    h.solver_used.toLowerCase().includes("cp-sat") ||
+                    h.solver_used.toLowerCase().includes("or_tools"))) ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Google OR-Tools (Optimized)
+                  </span>
                 ) : (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Badge variant="secondary" className="gap-1">
-                        Heuristic (Fallback)
-                        <HelpCircle className="h-3 w-3" aria-hidden="true" />
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs">
-                      <p className="text-xs">
-                        This plan was generated using a fast heuristic algorithm as a fallback when the optimal solver was unavailable.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                    Heuristic (Fallback)
+                  </span>
                 )}
 
                 <span className="text-xs text-muted-foreground">

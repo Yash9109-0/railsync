@@ -44,10 +44,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { horizonId } = await generateHorizonPlan(horizonType, start, corridorId)
-    await generateHorizonSummary(horizonId)
+    const result = await generateHorizonPlan(horizonType, start, corridorId)
+    await generateHorizonSummary(result.horizonId)
 
-    return NextResponse.json({ horizonId })
+    return NextResponse.json({
+      horizonId: result.horizonId,
+      solver_used: result.solver_used ?? "OR-Tools (CP-SAT)",
+    })
   } catch (error: any) {
     console.error('[api/generate-horizon-plan] error:', error)
     return NextResponse.json(

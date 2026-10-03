@@ -125,7 +125,8 @@ function getStepsForRole(role: UserRole): TourStep[] {
   }
 }
 
-function getRoleDisplayName(role: UserRole): string {
+export function getRoleDisplayName(role: UserRole | string | null | undefined): string {
+  if (!role) return "Admin";
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
@@ -400,27 +401,31 @@ export function OnboardingTrigger({ userId, role, children }: OnboardingTriggerP
         onClose={handleClose}
         onComplete={handleComplete}
       />
-      {hasCompleted && (
-        <TourReplayButton role={role} onReplay={() => setIsOpen(true)} />
-      )}
     </>
   );
 }
 
-/* Rendered as a sibling of the dashboard's `h-screen` shell, so it MUST be
-   `fixed` — in normal flow it would add height past 100vh and produce a
-   second, document-level scrollbar alongside the `main` scroller. */
-function TourReplayButton({ role, onReplay }: { role: UserRole; onReplay: () => void }) {
+export function TourReplayButton({
+  role,
+  onReplay,
+  className,
+}: {
+  role: UserRole | string | null | undefined;
+  onReplay: () => void;
+  className?: string;
+}) {
   return (
-    <Button
-      variant="ghost"
-      size="sm"
+    <button
+      type="button"
       onClick={onReplay}
-      className="fixed bottom-4 left-4 z-30 gap-1.5 text-xs shadow-md"
+      className={cn(
+        "w-full flex items-center gap-2 text-xs text-gray-500 hover:text-purple-600 transition-colors py-1.5",
+        className
+      )}
     >
-      <HelpCircle className="h-3.5 w-3.5" />
-      Show {getRoleDisplayName(role)} tour again
-    </Button>
+      <HelpCircle className="h-3.5 w-3.5 shrink-0" />
+      <span>Show {getRoleDisplayName(role)} tour again</span>
+    </button>
   );
 }
 

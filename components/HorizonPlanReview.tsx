@@ -57,6 +57,7 @@ interface HorizonRow {
   summary_explanation: string | null
   created_at: string
   corridor_id?: number | null
+  solver_used?: string | null
 }
 
 interface BlockRequestRef {
@@ -349,6 +350,24 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
                 {fmtDateRangeShort(horizon.horizon_start, horizon.horizon_end)}
               </span>
               <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
+              {horizon.solver_used === "OR-Tools" ||
+              horizon.solver_used === "CP-SAT" ||
+              horizon.solver_used === "OR-Tools (CP-SAT)" ||
+              horizon.solver_used === "or_tools" ||
+              horizon.solver_used === "cp-sat" ||
+              (typeof horizon.solver_used === "string" &&
+                (horizon.solver_used.toLowerCase().includes("or-tools") ||
+                  horizon.solver_used.toLowerCase().includes("cp-sat") ||
+                  horizon.solver_used.toLowerCase().includes("or_tools"))) ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Google OR-Tools (Optimized)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                  Heuristic (Fallback)
+                </span>
+              )}
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-[65ch]">
               {horizon.summary_explanation ?? "No plan narrative available."}

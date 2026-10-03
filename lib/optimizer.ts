@@ -1,3 +1,4 @@
+import { spawn } from 'child_process'
 import { createClient } from '@supabase/supabase-js'
 import { openRouterChat } from '@/lib/llm'
 import { createNotificationsForUsers, getControlOfficers } from '@/lib/notifications'
@@ -46,11 +47,77 @@ const utcMidnight = (d: Date) =>
   Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
 
 const hoursFromMidnight = (d: Date) => (d.getTime() - utcMidnight(d)) / HOUR_MS
+
+/**
+ * Executes Google OR-Tools CP-SAT solver locally using solver.py.
+ */
+function runLocalOrToolsSolver(apiPayload: {
+  horizon_total_mins: number;
+  segment_capacity_mins: Record<number, number>;
+  requests: any[];
+}): Promise<{
+  results: Array<{ id: string; scheduled: boolean; start_mins: number | null; duration_mins: number }>;
+  solver_used: string;
+  solver_label: string;
+}> {
+  return new Promise((resolve, reject) => {
+    const pythonCode = `
+import sys, json
+try:
+    from solver import solve_horizon
+    payload = json.loads(sys.stdin.read())
+    segment_caps = {int(k): int(v) for k, v in payload['segment_capacity_mins'].items()}
+    res = solve_horizon(payload['requests'], segment_caps, payload['horizon_total_mins'])
+    print(json.dumps(res))
+except Exception as e:
+    import traceback
+    sys.stderr.write(traceback.format_exc())
+    sys.exit(1)
+`;
+
+    const pythonProcess = spawn('python', ['-c', pythonCode], {
+      cwd: process.cwd(),
+      env: process.env,
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    pythonProcess.on('error', (err) => {
+      reject(new Error(`Failed to spawn Python process: ${err.message}`));
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`Python OR-Tools process exited with code ${code}. Stderr: ${stderr.trim()}`));
+        return;
+      }
+      try {
+        const parsed = JSON.parse(stdout);
+        resolve(parsed);
+      } catch (err: any) {
+        reject(new Error(`Failed to parse OR-Tools output: ${err.message}. Raw: ${stdout}`));
+      }
+    });
+
+    pythonProcess.stdin.write(JSON.stringify(apiPayload));
+    pythonProcess.stdin.end();
+  });
+}
+
 export async function generateHorizonPlan(
   horizonType: 'weekly' | 'monthly',
   startDate: Date,
   corridorId?: number
-): Promise<{ horizonId: string }> {
+): Promise<{ horizonId: string; solver_used: string }> {
   let lastPayload: string | undefined;
   try {
     const HORIZON_MINS = horizonType === 'weekly' ? 10080 : 43200;
@@ -132,26 +199,45 @@ export async function generateHorizonPlan(
       })
     };
 
-     console.log("[optimizer] Calling CP-SAT Solver API...");
-    const rawMlUrl = process.env.ML_API_URL || 'https://railsync-ml.onrender.com';
-    const ML_API_URL = rawMlUrl.replace(/\/predict-priority$/, '');
-    const solverUrl = `${ML_API_URL}/solve-horizon`;
-    lastPayload = JSON.stringify(apiPayload);
-    console.log("Attempting CP-SAT call to:", solverUrl);
-    const response = await fetch(solverUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(apiPayload),
-      signal: AbortSignal.timeout(45000)
-    });
+    console.log("[optimizer] ========================================");
+    console.log("[optimizer] INITIATING CP-SAT SOLVER PIPELINE");
+    console.log(`[optimizer] Horizon: ${horizonType} | Start: ${startDate.toISOString()} | Corridor: ${corridorId ?? 'All'}`);
+    console.log(`[optimizer] Requests to schedule: ${validRequests.length}`);
 
-    if (!response.ok) {
-      throw new Error(`ML API Failed with status: ${response.status}`);
+    let solverResponse: any = null;
+    let solverUsed = "OR-Tools (CP-SAT)";
+
+    // Step A: Attempt local Google OR-Tools CP-SAT solver first
+    try {
+      console.log("[optimizer] Attempting local Google OR-Tools (CP-SAT) solver execution...");
+      solverResponse = await runLocalOrToolsSolver(apiPayload);
+      console.log("✅ [optimizer] Google OR-Tools (CP-SAT) solver executed cleanly in local environment!");
+    } catch (localErr: any) {
+      console.warn("⚠️ [optimizer] Local OR-Tools execution failed or unavailable:", localErr?.message);
+
+      // Step B: Attempt remote ML API solver
+      const rawMlUrl = process.env.ML_API_URL || 'https://railsync-ml.onrender.com';
+      const ML_API_URL = rawMlUrl.replace(/\/predict-priority$/, '');
+      const solverUrl = `${ML_API_URL}/solve-horizon`;
+      lastPayload = JSON.stringify(apiPayload);
+      console.log("[optimizer] Attempting remote CP-SAT call to:", solverUrl);
+
+      const response = await fetch(solverUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(apiPayload),
+        signal: AbortSignal.timeout(45000)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Remote ML API failed with status ${response.status}`);
+      }
+
+      solverResponse = await response.json();
+      console.log("✅ [optimizer] Remote OR-Tools (CP-SAT) solver executed cleanly!");
     }
 
-    const solverResponse = await response.json();
     const solverResults = solverResponse.results ?? solverResponse;
-    const solverUsed = solverResponse.solver_used ?? 'or_tools';
 
     // 5. Create Horizon Row (CP-SAT success)
     const { data: horizon, error: horizonErr } = await supabase
@@ -259,16 +345,17 @@ export async function generateHorizonPlan(
       console.error('[optimizer] Failed to notify control officers:', notifyErr)
     }
 
-    return { horizonId };
+    return { horizonId, solver_used: solverUsed };
 
-  } catch (error) {
+  } catch (error: any) {
     console.error(
-      "🔴 CP-SAT SOLVER CALL FAILED:",
-      error instanceof Error ? error.message : String(error),
-      error instanceof Error ? error.stack : undefined,
-      "Payload sent:",
-      lastPayload
+      "❌ [optimizer] Google OR-Tools (CP-SAT) solver execution failed with exception:",
+      error?.message || error
     );
+    if (error?.stack) {
+      console.error("[optimizer] Stack trace:", error.stack);
+    }
+    console.warn("⚠️ [optimizer] Dropping to fallback Heuristic (Greedy) solver engine...");
     return generateHorizonPlanGreedy(horizonType, startDate, corridorId);
   }
 }
@@ -277,7 +364,7 @@ export async function generateHorizonPlanGreedy(
   horizonType: 'weekly' | 'monthly',
   startDate: Date,
   corridorId?: number,
-): Promise<{ horizonId: string }> {
+): Promise<{ horizonId: string; solver_used: string }> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -739,7 +826,7 @@ export async function generateHorizonPlanGreedy(
     console.error('[optimizer] Failed to notify control officers:', notifyErr)
   }
 
-  return { horizonId }
+  return { horizonId, solver_used: "heuristic" }
 }
 
 type HorizonSummaryRow = {

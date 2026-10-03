@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { GlobeLock, MapPin, Clock, LogOut } from "lucide-react";
 import type { Corridor } from "@/lib/types";
+import { CORRIDORS, getCorridorDisplayName } from "@/lib/corridors";
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -85,8 +86,22 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
     return () => clearInterval(interval);
   }, []);
 
-  const selectedName =
-    corridors.find((c) => c.id === selectedCorridorId)?.name ?? null;
+  const selectedName = selectedCorridorId != null
+    ? getCorridorDisplayName(
+        selectedCorridorId,
+        corridors.find((c) => c.id === selectedCorridorId)?.name
+      )
+    : null;
+
+  const displayCorridors = corridors.length > 0
+    ? corridors.map((c) => ({
+        id: c.id,
+        name: getCorridorDisplayName(c.id, c.name),
+      }))
+    : CORRIDORS.map((c) => ({
+        id: c.id === "corridor-1" ? 1 : 2,
+        name: c.name,
+      }));
 
   return (
     <header
@@ -118,44 +133,44 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
             </span>
           </div>
 
-<div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
             {loading ? (
               <Skeleton className="h-8 w-52 rounded-lg" />
             ) : (
               <div className="animate-fade-in">
                 <Select
-                value={selectedCorridorId == null ? "" : String(selectedCorridorId)}
-                onValueChange={(value) =>
-                  setSelectedCorridorId(
-                    value === "" ? null : Number(value),
-                  )
-                }
-                data-tour="corridor-switcher"
-              >
-                <SelectTrigger
-                  size="default"
-                  className={cn(
-                    "w-64 min-w-56 bg-white rounded-full border border-gray-200 px-4 py-2",
-                    "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary",
-                    "hover:border-primary/60",
-                  )}
+                  value={selectedCorridorId == null ? "" : String(selectedCorridorId)}
+                  onValueChange={(value) =>
+                    setSelectedCorridorId(
+                      value === "" ? null : Number(value),
+                    )
+                  }
+                  data-tour="corridor-switcher"
                 >
-                  <SelectValue placeholder="Select a corridor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {corridors.length === 0 ? (
-                    <span className="block px-2 py-4 text-sm text-muted-foreground">
-                      No corridors available
-                    </span>
-                  ) : (
-                      corridors.map((corridor) => (
+                  <SelectTrigger
+                    size="default"
+                    className={cn(
+                      "w-72 min-w-64 bg-white rounded-full border border-gray-200 px-4 py-2 text-xs font-medium",
+                      "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary",
+                      "hover:border-primary/60",
+                    )}
+                  >
+                    <SelectValue placeholder="Select a corridor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {displayCorridors.length === 0 ? (
+                      <span className="block px-2 py-4 text-sm text-muted-foreground">
+                        No corridors available
+                      </span>
+                    ) : (
+                      displayCorridors.map((corridor) => (
                         <SelectItem
                           key={corridor.id}
                           value={String(corridor.id)}
                           textValue={corridor.name}
-                          className="data-[selected=true]:bg-primary/5 data-[selected=true]:text-primary"
+                          className="data-[selected=true]:bg-primary/5 data-[selected=true]:text-primary text-xs"
                         >
-                          <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center justify-between w-full gap-2">
                             <span>{corridor.name}</span>
                             {corridor.id === selectedCorridorId && (
                               <GlobeLock className="h-3.5 w-3.5 text-primary" />
@@ -163,8 +178,8 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
                           </div>
                         </SelectItem>
                       ))
-                  )}
-                </SelectContent>
+                    )}
+                  </SelectContent>
                 </Select>
               </div>
             )}

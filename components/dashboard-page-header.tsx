@@ -40,16 +40,16 @@ export function DashboardPageHeader({
           </div>
         )}
         <div className="flex flex-col">
-          <h1 className="text-2xl font-semibold tracking-tight text-purple-700 flex items-center gap-2 font-heading">
+          <h1 className="text-2xl font-semibold tracking-tight text-purple-700 dark:text-purple-300 flex items-center gap-2 font-heading">
             {userName && (
-              <span className="text-lg font-medium text-muted-foreground">
+              <span className="text-lg font-medium text-muted-foreground dark:text-slate-100">
                 {greeting}, {userName}
               </span>
             )}
             {title}
           </h1>
           {description && (
-            <p className="text-sm text-muted-foreground">{description}</p>
+            <p className="text-sm text-muted-foreground dark:text-slate-400">{description}</p>
           )}
         </div>
       </div>

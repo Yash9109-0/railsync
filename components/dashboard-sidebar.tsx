@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "@/components/theme-provider";
-import { useOnboardingTour } from "@/components/OnboardingTour";
+import { useOnboardingTour, type UserRole } from "@/components/OnboardingTour";
 
 interface DashboardSidebarProps {
   role: string | null;
@@ -127,7 +127,7 @@ export function DashboardSidebar({
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
-  const { hasCompleted, startTour } = useOnboardingTour(userId);
+  const { isOpen: tourOpen, startTour, closeTour, completeTour, TourComponent } = useOnboardingTour(userId);
 
   useEffect(() => {
     const hasShown = sessionStorage.getItem(WELCOME_BACK_KEY);
@@ -351,7 +351,7 @@ export function DashboardSidebar({
 
       {/* Recent activity — compact live feed of the latest actions */}
       <div className="px-2 pb-2">
-        <p className="px-3 pb-1 text-[13px] font-bold text-black">
+        <p className="px-3 pb-1 text-[13px] font-bold text-black dark:text-slate-300">
           Recent Activity
         </p>
         {loadingActivity ? (
@@ -378,7 +378,7 @@ export function DashboardSidebar({
                     )}
                   />
                   <span
-                    className="min-w-0 flex-1 whitespace-normal text-[12px] font-bold leading-4 text-black"
+                    className="min-w-0 flex-1 whitespace-normal text-[12px] font-bold leading-4 text-black dark:text-slate-400"
                     title={item.description}
                   >
                     {item.description}
@@ -393,64 +393,28 @@ export function DashboardSidebar({
         )}
       </div>
 
-      <Separator className="mx-3" />
-
-      <div
-        className={cn(
-          "flex items-center justify-between gap-3 px-3 py-4 transition-all duration-slow",
-          showWelcome
-            ? "animate-in fade-in-0 zoom-in-95"
-            : "",
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar className="w-9 h-9 shrink-0">
-            <AvatarFallback userId={userId} name={displayName}>
+      {/* Bottom section: stacked flex column */}
+      <div className="flex flex-col gap-3 p-4 border-t border-gray-100 dark:border-slate-800">
+        {/* User Profile Card */}
+        <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Avatar */}
+            <div className="w-9 h-9 rounded-full bg-purple-100 dark:bg-slate-800 text-purple-700 dark:text-purple-300 font-semibold text-xs flex items-center justify-center shrink-0">
               {initials}
-            </AvatarFallback>
-          </Avatar>
-
-          <div className="flex min-w-0 flex-1 flex-col">
-            <span className="block whitespace-normal text-[14px] font-bold leading-tight text-black">
-              {displayName}
-            </span>
-            <Badge variant="outline" className="w-fit text-xs">
-              {roleLabel}
-            </Badge>
-            {showWelcome && (
-              <span className="text-xs text-primary font-medium animate-in fade-in slide-in-from-bottom-2 duration-base delay-200">
-                Welcome back!
+            </div>
+            {/* Name & Role */}
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate leading-tight">
+                {displayName}
               </span>
-            )}
+              <span className="text-[11px] font-medium text-gray-500 dark:text-slate-400 leading-tight">
+                {roleLabel}
+              </span>
+            </div>
           </div>
-        </div>
 
-        <TooltipProvider delayDuration={350}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="shrink-0 hover:bg-primary-hover"
-                onClick={toggleTheme}
-                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              >
-                {theme === "dark" ? (
-                  <Sun className="h-4 w-4" />
-                ) : (
-                  <Moon className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+          {/* Actions */}
+          <div className="flex items-center gap-1.5 shrink-0 text-gray-500 dark:text-slate-400">
             <TooltipProvider delayDuration={350}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -458,40 +422,92 @@ export function DashboardSidebar({
                     type="button"
                     variant="ghost"
                     size="icon-xs"
-                    className="shrink-0 hover:bg-primary-hover"
-                    aria-label="Settings"
+                    className="h-8 w-8 shrink-0 hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-100"
+                    onClick={toggleTheme}
+                    aria-label={
+                      theme === "dark"
+                        ? "Switch to light mode"
+                        : "Switch to dark mode"
+                    }
                   >
-                    <Settings className="h-4 w-4" />
+                    {theme === "dark" ? (
+                      <Sun className="h-4 w-4" />
+                    ) : (
+                      <Moon className="h-4 w-4" />
+                    )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top">Settings</TooltipContent>
+                <TooltipContent side="top">
+                  {theme === "dark"
+                    ? "Switch to light mode"
+                    : "Switch to dark mode"}
+                </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel className="font-semibold">Settings</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {hasCompleted && (
-              <DropdownMenuItem
-                onClick={startTour}
-                className="flex items-center gap-2"
-              >
-                <HelpCircle className="h-4 w-4" />
-                Show tour again
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleSignOut}
-              disabled={isSigningOut}
-              className="flex items-center gap-2 text-destructive focus:text-destructive"
-            >
-              <LogOut className="h-4 w-4" />
-              {isSigningOut ? "Signing out..." : "Sign out"}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <TooltipProvider delayDuration={350}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="h-8 w-8 shrink-0 hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-100"
+                        aria-label="Settings"
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Settings</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel className="font-semibold">
+                  Settings
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={startTour}
+                  className="flex items-center gap-2 cursor-pointer"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                  Show tour again
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleSignOut}
+                  disabled={isSigningOut}
+                  className="flex items-center gap-2 text-destructive focus:text-destructive cursor-pointer"
+                >
+                  <LogOut className="h-4 w-4" />
+                  {isSigningOut ? "Signing out..." : "Sign out"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* Tour Trigger Button: secondary link placed neatly below profile row */}
+        <button
+          type="button"
+          onClick={startTour}
+          className="w-full flex items-center gap-2 text-xs text-gray-500 hover:text-purple-600 dark:text-slate-200 dark:hover:text-purple-400 transition-colors py-1.5"
+        >
+          <HelpCircle className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">Show {roleLabel} tour again</span>
+        </button>
       </div>
+
+      <TourComponent
+        userId={userId}
+        role={((role as UserRole) || "admin")}
+        isOpen={tourOpen}
+        onClose={closeTour}
+        onComplete={completeTour}
+      />
     </aside>
   );
 }

@@ -1,8 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-
-const TRAIN_COUNT = 15
-const WINDOW_MS = 24 * 60 * 60 * 1000
+import { LIVE_TRAIN_DATASET } from '@/lib/corridors'
 
 export async function POST(req: Request) {
   const supabase = createClient()
@@ -12,16 +10,12 @@ export async function POST(req: Request) {
   }
 
   const corridorId = body.corridorId
+  const corridorIdNum =
+    corridorId != null && !Number.isNaN(Number(corridorId))
+      ? Number(corridorId)
+      : null
 
-  if (corridorId == null || Number.isNaN(Number(corridorId))) {
-    return NextResponse.json(
-      { error: 'corridorId is required in the request body' },
-      { status: 400 }
-    )
-  }
-
-  const corridorIdNum = Number(corridorId)
-
+  // Clear existing timetable entries
   const { error: clearError } = await supabase
     .from('timetable')
     .delete()
@@ -34,10 +28,11 @@ export async function POST(req: Request) {
     )
   }
 
+  // Fetch segments to assign valid foreign keys
   const { data: segmentRows, error: segmentError } = await supabase
     .from('segments')
-    .select('id, name')
-    .eq('corridor_id', corridorIdNum)
+    .select('id, name, corridor_id')
+    .order('id')
 
   if (segmentError) {
     return NextResponse.json(
@@ -47,28 +42,58 @@ export async function POST(req: Request) {
   }
 
   const segments = segmentRows ?? []
+  const c1Segments = segments.filter((s) => s.corridor_id === 1)
+  const c2Segments = segments.filter((s) => s.corridor_id === 2)
 
-  if (segments.length === 0) {
-    return NextResponse.json(
-      {
-        error: 'No segments found for the given corridor_id',
-        corridorId: corridorIdNum,
-      },
-      { status: 404 }
-    )
+  // Map each train in LIVE_TRAIN_DATASET to a realistic segment and schedule relative to now
+  const now = Date.now()
+
+  // Specific segment and status assignments for the 10 real Raipur trains
+  const trainConfig: Record<
+    string,
+    { segmentOffset: number; minuteOffset: number; status: 'scheduled' | 'in_progress' | 'delayed' }
+  > = {
+    '12834': { segmentOffset: 0, minuteOffset: -12, status: 'in_progress' },
+    '18237': { segmentOffset: 2, minuteOffset: -30, status: 'delayed' },
+    'MAT-BOXN-541': { segmentOffset: 1, minuteOffset: -18, status: 'in_progress' },
+    'MAT-BRN-209': { segmentOffset: 3, minuteOffset: -40, status: 'delayed' },
+    '08701': { segmentOffset: 1, minuteOffset: 25, status: 'scheduled' },
+    '20825': { segmentOffset: 2, minuteOffset: -15, status: 'in_progress' },
+    '12859': { segmentOffset: 1, minuteOffset: -28, status: 'delayed' },
+    'MAT-BOBRN-882': { segmentOffset: 0, minuteOffset: -10, status: 'in_progress' },
+    'MAT-BFNS-304': { segmentOffset: 2, minuteOffset: 35, status: 'scheduled' },
+    '08728': { segmentOffset: 3, minuteOffset: 55, status: 'scheduled' },
   }
 
-  const now = Date.now()
-  const trains = Array.from({ length: TRAIN_COUNT }, (_, i) => ({
-    train_number: String(10001 + i),
-    segment_id: segments[i % segments.length].id,
-    scheduled_time: new Date(now + (i / TRAIN_COUNT) * WINDOW_MS).toISOString(),
-    status: 'scheduled' as const,
-  }))
+  let selectedTrains = LIVE_TRAIN_DATASET
+  if (corridorIdNum === 1) {
+    selectedTrains = LIVE_TRAIN_DATASET.filter((t) => t.corridorId === 'corridor-1')
+  } else if (corridorIdNum === 2) {
+    selectedTrains = LIVE_TRAIN_DATASET.filter((t) => t.corridorId === 'corridor-2')
+  }
+
+  const timetableRows = selectedTrains.map((train) => {
+    const isCorridor1 = train.corridorId === 'corridor-1'
+    const segPool = isCorridor1
+      ? (c1Segments.length > 0 ? c1Segments : segments)
+      : (c2Segments.length > 0 ? c2Segments : segments)
+
+    const cfg = trainConfig[train.id] || { segmentOffset: 0, minuteOffset: 0, status: 'scheduled' }
+    const segment = segPool[cfg.segmentOffset % (segPool.length || 1)]
+
+    const scheduledTime = new Date(now + cfg.minuteOffset * 60 * 1000).toISOString()
+
+    return {
+      train_number: train.trainNo,
+      segment_id: segment ? segment.id : (isCorridor1 ? 1 : 5),
+      scheduled_time: scheduledTime,
+      status: cfg.status,
+    }
+  })
 
   const { data: inserted, error: insertError } = await supabase
     .from('timetable')
-    .insert(trains)
+    .insert(timetableRows)
     .select()
 
   if (insertError) {
@@ -79,7 +104,10 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json(
-    { message: 'Timetable seeded', count: inserted?.length ?? TRAIN_COUNT },
+    {
+      message: 'Timetable seeded with real Raipur trains and material rakes',
+      count: inserted?.length ?? timetableRows.length,
+    },
     { status: 201 }
   )
 }
