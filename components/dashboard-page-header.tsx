@@ -30,17 +30,17 @@ export function DashboardPageHeader({
     <header
       className={cn(
         "flex items-start justify-between gap-2 flex-wrap",
-        "divider-gradient pb-2 bg-transparent",
+        "divider-gradient pb-6 bg-transparent",
       )}
     >
       <div className="flex items-center gap-3">
         {Icon && (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-icon-primary text-primary">
+          <div className="flex shrink-0 items-center justify-center rounded-xl bg-purple-100 p-3 text-primary">
             <Icon className="h-5 w-5" />
           </div>
         )}
         <div className="flex flex-col">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground flex items-center gap-2 font-heading">
+          <h1 className="text-2xl font-semibold tracking-tight text-purple-700 flex items-center gap-2 font-heading">
             {userName && (
               <span className="text-lg font-medium text-muted-foreground">
                 {greeting}, {userName}

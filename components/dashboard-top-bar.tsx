@@ -91,7 +91,7 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
   return (
     <header
       className={cn(
-        "sticky top-0 z-20 flex items-center justify-between gap-3 divider-gradient-primary bg-background/90 backdrop-blur",
+        "sticky top-0 z-20 flex items-center justify-between gap-3 divider-gradient-primary bg-background/90 backdrop-blur shadow-sm border-b border-gray-200",
         className,
       )}
     >
@@ -111,7 +111,7 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/30 border border-border/50">
+          <div className="flex items-center gap-2 bg-white rounded-full border border-gray-200 px-4 py-2">
             <Clock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
             <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">
               {formatDate(currentTime)} · {formatTime(currentTime)}
@@ -135,7 +135,7 @@ export function DashboardTopBar({ className }: DashboardTopBarProps) {
                 <SelectTrigger
                   size="default"
                   className={cn(
-                    "w-64 min-w-56 rounded-lg border-primary/50 bg-background",
+                    "w-64 min-w-56 bg-white rounded-full border border-gray-200 px-4 py-2",
                     "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary",
                     "hover:border-primary/60",
                   )}
