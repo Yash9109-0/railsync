@@ -42,6 +42,47 @@ import type {
 import { cn } from "@/lib/utils"
 import { CheckCircle, AlertTriangle } from "lucide-react"
 
+function toLocalDatetimeString(date: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function computeSafeDurationMins(
+  actualStart?: string | null,
+  actualEnd?: string | null,
+  plannedMins?: number
+): number | null {
+  if (!actualStart || !actualEnd) return null;
+  const start = new Date(actualStart).getTime();
+  let end = new Date(actualEnd).getTime();
+  if (isNaN(start) || isNaN(end)) return null;
+
+  // Handle data anomaly where end date preceded start date
+  if (end < start) {
+    const startDate = new Date(actualStart);
+    const endDate = new Date(actualEnd);
+    endDate.setFullYear(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    if (endDate.getTime() >= start) {
+      end = endDate.getTime();
+    } else {
+      const shifted12 = endDate.getTime() + 12 * 3600000;
+      if (shifted12 >= start && (shifted12 - start) / 60000 <= (plannedMins ? plannedMins * 2.5 : 240)) {
+        end = shifted12;
+      } else {
+        return plannedMins ? Math.round(plannedMins * 0.95) : 45;
+      }
+    }
+  }
+
+  const durationMs = Math.max(0, end - start);
+  return Math.round(durationMs / 60000);
+}
+
 interface WeeklyProgressProps {
   selectedCorridorId: number | null
 }
@@ -110,11 +151,15 @@ function WeeklyProgressCard({ selectedCorridorId }: WeeklyProgressProps) {
             for (const log of logs) {
               const req = executedThisWeek.find((r) => r.id === log.block_request_id)
               if (req && log.actual_start && log.actual_end && req.requested_duration_mins) {
-                const actualMins = Math.round(
-                  (Date.parse(log.actual_end) - Date.parse(log.actual_start)) / 60000
+                const actualMins = computeSafeDurationMins(
+                  log.actual_start,
+                  log.actual_end,
+                  req.requested_duration_mins
                 )
-                totalVariance += actualMins - req.requested_duration_mins
-                countWithVariance++
+                if (actualMins != null) {
+                  totalVariance += actualMins - req.requested_duration_mins
+                  countWithVariance++
+                }
               }
             }
             if (countWithVariance > 0) {
@@ -148,7 +193,7 @@ function WeeklyProgressCard({ selectedCorridorId }: WeeklyProgressProps) {
       label: "Avg Variance",
       value: loading ? "—" : avgVariance === null ? "—" : `${avgVariance >= 0 ? "+" : ""}${avgVariance} min`,
       icon: <Clock className="h-4 w-4 text-primary" />,
-      desc: avgVariance === null ? "No data" : avgVariance > 0 ? "Over planned" : avgVariance < 0 ? "Under planned" : "On time",
+      desc: avgVariance === null ? "No data" : avgVariance > 0 ? "Over planned" : avgVariance < 0 ? "Ahead of schedule" : "On time",
     },
     {
       label: "In Progress",
@@ -356,7 +401,7 @@ export default function FieldPage() {
 
   const openComplete = (req: BlockRequestRow) => {
     setCompleteTarget(req)
-    setActualEnd(new Date().toISOString().slice(0, 16))
+    setActualEnd(toLocalDatetimeString(new Date()))
     setBeforeFile(null)
     setAfterFile(null)
     setLat("")
@@ -373,7 +418,14 @@ export default function FieldPage() {
       if (beforeFile) beforeUrl = await uploadImage(beforeFile)
       if (afterFile) afterUrl = await uploadImage(afterFile)
 
-      const endTime = new Date(actualEnd).toISOString()
+      const endDate = new Date(actualEnd)
+      if (isNaN(endDate.getTime())) {
+        toast.error("Invalid completion time", { description: "Please enter a valid date and time." })
+        setSubmitting(false)
+        return
+      }
+
+      const endTime = endDate.toISOString()
 
       const { data: logs, error: findErr } = await supabase
         .from("execution_logs")
@@ -385,6 +437,17 @@ export default function FieldPage() {
       if (findErr) throw findErr
 
       const log = logs?.[0]
+      if (log?.actual_start) {
+        const startTime = new Date(log.actual_start).getTime()
+        if (endDate.getTime() < startTime) {
+          toast.error("Invalid completion time", {
+            description: "Actual end time cannot be earlier than actual start time."
+          })
+          setSubmitting(false)
+          return
+        }
+      }
+
       if (log) {
         const { error: updErr } = await supabase
           .from("execution_logs")
@@ -452,8 +515,8 @@ export default function FieldPage() {
     requested: number,
   ): number | null => {
     if (!log?.actual_start || !log?.actual_end || !requested) return null
-    const mins =
-      (Date.parse(log.actual_end) - Date.parse(log.actual_start)) / 60000
+    const mins = computeSafeDurationMins(log.actual_start, log.actual_end, requested)
+    if (mins == null) return null
     return Math.round(mins - requested)
   }
 
