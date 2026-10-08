@@ -1605,7 +1605,11 @@ if (pendingError) {
 
   function getSelectedOption(br: BlockRequestRow): BlockPlanOption | undefined {
     const selId = selectedOptions[br.id];
-    return br.block_plan_options?.find((o) => o.id === selId);
+    return (
+      br.block_plan_options?.find((o) => o.id === selId) ??
+      br.block_plan_options?.find((o) => o.is_recommended) ??
+      br.block_plan_options?.[0]
+    );
   }
 
   async function handleApproveSelected(br: BlockRequestRow) {
@@ -2037,7 +2041,10 @@ return (
                           const optRiskKey = delayRiskKey(opt.delay_risk);
                           const optRiskInfo = DELAY_RISK_BADGE[optRiskKey];
                           const isRecommended = !!opt.is_recommended;
-                          const isSelected = selectedOptions[br.id] === opt.id;
+                          const isSelected =
+                            selectedOptions[br.id] === opt.id ||
+                            (!selectedOptions[br.id] && isRecommended) ||
+                            (!selectedOptions[br.id] && !options.some((o) => o.is_recommended) && opt === options[0]);
                           const score = opt.priority_score;
                           const scorePct =
                             score != null
