@@ -58,9 +58,8 @@ export function getDashboardRouteForRole(role: string | null): string {
   }
 }
 
-export function getNavLinksForRole(role: string | null): NavLink[] {
-  if (role === "admin") return NAV_LINKS;
-  return NAV_LINKS.filter((link) => link.role === role);
+export function getNavLinksForRole(_role: string | null): NavLink[] {
+  return NAV_LINKS;
 }
 
 export function isAdminRole(role: string | null): boolean {

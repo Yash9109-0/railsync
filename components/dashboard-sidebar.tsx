@@ -267,10 +267,7 @@ export function DashboardSidebar({
     };
   }, [fetchActivity]);
 
-  const visibleLinks: NavLink[] =
-    role === "admin"
-      ? NAV_LINKS
-      : NAV_LINKS.filter((link) => link.role === role);
+  const visibleLinks: NavLink[] = NAV_LINKS;
 
   const handleSignOut = async () => {
     setIsSigningOut(true);

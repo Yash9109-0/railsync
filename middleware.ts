@@ -54,20 +54,7 @@ export async function middleware(request: NextRequest) {
   const segments = pathname.split("/").filter(Boolean);
   const dashboardSegment = segments[1];
 
-  if (isAdminRole(role)) {
-    if (!dashboardSegment) {
-      const url = request.nextUrl.clone();
-      url.pathname = userRoute;
-      return NextResponse.redirect(url);
-    }
-    return supabaseResponse;
-  }
-
-  const currentRoute = dashboardSegment
-    ? `/dashboard/${dashboardSegment}`
-    : "/dashboard";
-
-  if (currentRoute !== userRoute) {
+  if (!dashboardSegment) {
     const url = request.nextUrl.clone();
     url.pathname = userRoute;
     return NextResponse.redirect(url);
