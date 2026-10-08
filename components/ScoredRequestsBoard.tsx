@@ -351,7 +351,7 @@ function FeatureImportanceSection() {
             <p className="font-medium">Feature importance not available</p>
             <p className="mt-1">
               The ML API does not yet expose a <code className="text-xs">/feature-importance</code>{" "}
-              endpoint. This is a stretch goal for the team â€” once the Railsync-ML service
+              endpoint. This is a stretch goal for the team — once the Railsync-ML service
               adds that endpoint, this chart will render automatically.
             </p>
           </div>
@@ -653,7 +653,7 @@ export default function ScoredRequestsBoard() {
         )}
       </div>
       <div className="text-sm text-muted-foreground">
-        <span suppressHydrationWarning>{formatDateTime(opt.adjusted_start)}</span> Â·{" "}
+        <span suppressHydrationWarning>{formatDateTime(opt.adjusted_start)}</span> •{" "}
         {opt.adjusted_duration_mins ?? 0} min
       </div>
       <div className="flex items-center gap-2.5">
@@ -743,7 +743,7 @@ export default function ScoredRequestsBoard() {
               <p className="text-xs text-muted-foreground">
                 Requested start:{" "}
                 <span suppressHydrationWarning>{formatDateTime(row.requested_start)}</span>{" "}
-                Â· {row.requested_duration_mins} min
+                • {row.requested_duration_mins} min
               </p>
             </div>
             {variant === "scored" && (
@@ -863,7 +863,7 @@ export default function ScoredRequestsBoard() {
               <p className="text-xs text-muted-foreground">
                 Requested start:{" "}
                 <span suppressHydrationWarning>{formatDateTime(row.requested_start)}</span>{" "}
-                Â· {row.requested_duration_mins} min
+                • {row.requested_duration_mins} min
               </p>
             </div>
             <div className="text-right shrink-0">
@@ -1106,7 +1106,7 @@ export default function ScoredRequestsBoard() {
               <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card/30 py-12">
                 <CheckCircle className="h-12 w-12 text-success/80" />
                 <p className="text-muted-foreground">
-                  All caught up â€” no pending requests
+                  All caught up — no pending requests
                 </p>
               </div>
             )}

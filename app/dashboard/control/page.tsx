@@ -183,7 +183,7 @@ function fmtDateTimeLocal(iso: string) {
 }
 
 function fmtDuration(mins: number) {
-  if (!isFinite(mins) || mins <= 0) return "â€”";
+  if (!isFinite(mins) || mins <= 0) return "—";
   if (mins < 1) return `${Math.round(mins)} min`;
   const h = Math.floor(mins / 60);
   const m = Math.round(mins % 60);
@@ -191,7 +191,7 @@ function fmtDuration(mins: number) {
 }
 
 function humanizeMs(ms: number) {
-  if (!isFinite(ms) || ms <= 0) return "â€”";
+  if (!isFinite(ms) || ms <= 0) return "—";
   const secs = Math.round(ms / 1000);
   const m = Math.floor(secs / 60);
   const s = secs % 60;
@@ -199,7 +199,7 @@ function humanizeMs(ms: number) {
 }
 
 function priorityLabel(score: number | null) {
-  if (score === null) return "â€”";
+  if (score === null) return "—";
   if (score >= 8) return "High";
   if (score >= 5) return "Medium";
   return "Low";
@@ -2003,7 +2003,7 @@ return (
                           <span suppressHydrationWarning>
                             {fmtDateTime(br.requested_start)}
                           </span>{" "}
-                          Â· {fmtDuration(br.requested_duration_mins)}
+                          • {fmtDuration(br.requested_duration_mins)}
                         </CardDescription>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -2079,7 +2079,7 @@ return (
                                     <Sparkles className="mt-0.5 h-4 w-4 text-primary" />
                                   )}
                                   <span className="text-sm font-medium">
-                                    {fmtDateTime(opt.adjusted_start)} â€¢{" "}
+                                    {fmtDateTime(opt.adjusted_start)} •{" "}
                                     {fmtDuration(opt.adjusted_duration_mins)}
                                   </span>
                                 </div>
@@ -2117,7 +2117,7 @@ return (
                                     Priority Score
                                   </span>
                                   <span className="font-medium">
-                                    {score ?? "â€”"}
+                                    {score ?? "—"}
                                   </span>
                                 </div>
                                 <Progress
@@ -2482,7 +2482,7 @@ return (
                 <div className="space-y-4 py-2 text-sm">
                   <div className="grid grid-cols-2 gap-2">
                     <span className="text-muted-foreground">Segment</span>
-                    <span>{modifyTarget.segments?.name ?? "â€”"}</span>
+                    <span>{modifyTarget.segments?.name ?? "—"}</span>
                     <span className="text-muted-foreground">Priority</span>
                     <span>{priorityLabel(modifyTarget.priority_score)}</span>
                     <span className="text-muted-foreground">
