@@ -499,3 +499,20 @@ C-D,9,208,Other,urgent,2,1,0.41,56.77,85.04
 D-E,23,203,Electrical,routine,0,0,0.202,22.77,20.19
 D-E,3,142,Track,urgent,3,0,0.242,64.89,81.21
 B-C,19,149,Electrical,safety_critical,8,1,0.007,83.75,100.0
+Urkura â†’ Mandhar,1,60,Signal,safety_critical,2,0,0.0,50.0,95.0
+Saraswati Nagar â†’ Sarona,2,120,Track,routine,2,0,0.0,50.0,58.0
+Mandhar â†’ Silyari,3,75,Electrical,urgent,2,0,0.0,50.0,79.0
+Sarona â†’ Kumhari,2,60,Signal,routine,2,0,0.0,50.0,62.0
+Kumhari â†’ Bhilai,1,90,Track,urgent,2,0,0.0,50.0,87.0
+Raipur Jn â†’ Saraswati Nagar,13,90,Other,safety_critical,2,0,0.0,50.0,100.0
+Sarona â†’ Kumhari,13,90,Other,routine,2,0,0.0,50.0,43.88
+Saraswati Nagar â†’ Sarona,13,60,Other,urgent,2,0,0.0,50.0,84.44
+Saraswati Nagar â†’ Sarona,17,90,Other,safety_critical,2,0,0.0,50.0,100.0
+Sarona â†’ Kumhari,17,60,Other,urgent,2,0,0.0,50.0,84.31
+Urkura â†’ Mandhar,17,34,Other,routine,2,0,38.467,50.0,47.1
+Raipur Jn â†’ Saraswati Nagar,1,90,Track,safety_critical,2,0,0.0,50.0,96.5
+Saraswati Nagar â†’ Sarona,2,60,Electrical,urgent,2,0,0.0,50.0,88.0
+Sarona â†’ Kumhari,3,45,Signal,urgent,2,0,0.0,50.0,82.5
+Kumhari â†’ Bhilai,1,120,Track,routine,2,0,0.0,50.0,68.0
+Raipur Jn â†’ WRS Colony,2,90,Track,urgent,2,0,0.0,50.0,91.0
+WRS Colony â†’ Urkura,3,60,Electrical,routine,2,0,0.0,50.0,64.0

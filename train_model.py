@@ -32,8 +32,23 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     return X
 
 
-def main():
+def retrain_from_data(new_records: list[dict] | None = None) -> float:
     df = pd.read_csv("data.csv")
+
+    if new_records and len(new_records) > 0:
+        new_df = pd.DataFrame(new_records)
+        # Ensure all required columns exist in new_df
+        for col in NUMERIC + CATEGORICAL:
+            if col not in new_df.columns:
+                if col in NUMERIC:
+                    new_df[col] = 0.0
+                else:
+                    new_df[col] = "Other"
+        if TARGET not in new_df.columns:
+            new_df[TARGET] = 50.0
+        df = pd.concat([df, new_df[NUMERIC + CATEGORICAL + [TARGET]]], ignore_index=True)
+        # Save updated dataset
+        df.to_csv("data.csv", index=False)
 
     y = df[TARGET]
     X = build_features(df)
@@ -44,19 +59,24 @@ def main():
     )
 
     model = RandomForestRegressor(
-        n_estimators=200, random_state=42, n_jobs=-1
+        n_estimators=100, random_state=42, n_jobs=1
     )
     model.fit(X_train, y_train)
 
     preds = model.predict(X_test)
-    mae = mean_absolute_error(y_test, preds)
+    mae = float(mean_absolute_error(y_test, preds))
     print(f"MAE: {mae:.4f}")
 
     joblib.dump(model, "model.pkl")
     joblib.dump(feature_cols, "columns.pkl")
     print(f"Saved model.pkl and columns.pkl ({len(feature_cols)} features)")
-    print("Features:", feature_cols)
+    return mae
+
+
+def main():
+    retrain_from_data()
 
 
 if __name__ == "__main__":
     main()
+

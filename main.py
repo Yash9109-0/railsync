@@ -126,3 +126,31 @@ def solve_horizon_endpoint(req: SolveHorizonRequest):
             status_code=500,
             detail=f"solve_horizon failed: {exc}",
         )
+
+
+class RetrainRequest(BaseModel):
+    new_records: list[dict] | None = None
+    notes: str | None = None
+
+
+@app.post("/retrain")
+def retrain_endpoint(req: RetrainRequest = RetrainRequest()):
+    global model, FEATURE_COLS
+    try:
+        from train_model import retrain_from_data
+        new_mae = retrain_from_data(req.new_records)
+        # Reload hot model into memory
+        model = joblib.load(MODEL_PATH)
+        FEATURE_COLS = list(joblib.load(COLUMNS_PATH))
+        return {
+            "status": "success",
+            "mae": round(new_mae, 4),
+            "features_count": len(FEATURE_COLS),
+            "notes": req.notes or "Model retrained from execution logs",
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"retraining failed: {exc}",
+        )
+
