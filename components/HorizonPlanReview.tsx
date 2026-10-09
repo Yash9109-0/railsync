@@ -685,7 +685,7 @@ export default function HorizonPlanReview() {
         .from("block_plan_horizons")
         .select("*")
         .eq("status", "draft")
-        .eq("corridor_id", selectedCorridorId)
+        .or(`corridor_id.eq.${selectedCorridorId},corridor_id.is.null`)
         .order("generated_at", { ascending: false })
 
       if (!directError) {
