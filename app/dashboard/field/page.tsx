@@ -28,6 +28,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Textarea,
 } from "@/components/ui"
 import type { User } from "@supabase/supabase-js";
 import { DashboardPageHeader } from "@/components/dashboard-page-header"
@@ -271,6 +272,7 @@ export default function FieldPage() {
   const [actualEnd, setActualEnd] = useState("")
   const [lat, setLat] = useState("")
   const [lng, setLng] = useState("")
+  const [workDoneNotes, setWorkDoneNotes] = useState("")
   const [locating, setLocating] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
@@ -406,6 +408,7 @@ export default function FieldPage() {
     setAfterFile(null)
     setLat("")
     setLng("")
+    setWorkDoneNotes("")
     setDialogOpen(true)
   }
 
@@ -449,17 +452,30 @@ export default function FieldPage() {
       }
 
       if (log) {
-        const { error: updErr } = await supabase
+        const updPayload: Record<string, unknown> = {
+          before_image_url: beforeUrl,
+          after_image_url: afterUrl,
+          actual_end: endTime,
+          geo_lat: lat ? parseFloat(lat) : null,
+          geo_lng: lng ? parseFloat(lng) : null,
+          work_done_notes: workDoneNotes.trim() || null,
+          status: "completed" as const,
+        }
+        let { error: updErr } = await supabase
           .from("execution_logs")
-          .update({
-            before_image_url: beforeUrl,
-            after_image_url: afterUrl,
-            actual_end: endTime,
-            geo_lat: lat ? parseFloat(lat) : null,
-            geo_lng: lng ? parseFloat(lng) : null,
-            status: "completed" as const,
-          })
+          .update(updPayload)
           .eq("id", log.id)
+
+        // Graceful fallback if database schema does not have the work_done_notes column yet
+        if (updErr && updErr.message?.includes("work_done_notes")) {
+          delete updPayload.work_done_notes
+          const retry = await supabase
+            .from("execution_logs")
+            .update(updPayload)
+            .eq("id", log.id)
+          updErr = retry.error
+        }
+
         if (updErr) throw updErr
       }
 
@@ -817,6 +833,7 @@ export default function FieldPage() {
                   <TableHead>Variance</TableHead>
                   <TableHead>Before</TableHead>
                   <TableHead>After</TableHead>
+                  <TableHead>Notes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -844,12 +861,15 @@ export default function FieldPage() {
                         <TableCell>
                           <Skeleton className="h-10 w-10 rounded" />
                         </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-20" />
+                        </TableCell>
                       </TableRow>
                     ))
                   : completed.length === 0
                     ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="py-8">
+                        <TableCell colSpan={8} className="py-8">
                           <EmptyState
                             illustrationSrc="maintenance-all-clear.svg"
                             illustrationAlt="No completed work yet"
@@ -885,6 +905,15 @@ export default function FieldPage() {
                             <TableCell>
                               <ImageThumb url={log?.after_image_url ?? null} />
                             </TableCell>
+                            <TableCell className="max-w-[180px]">
+                              {log?.work_done_notes ? (
+                                <span className="text-xs text-foreground/80 line-clamp-2" title={log.work_done_notes}>
+                                  {log.work_done_notes}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground/50 italic">—</span>
+                              )}
+                            </TableCell>
                           </TableRow>
                         )
                       })}
@@ -896,7 +925,7 @@ export default function FieldPage() {
 
       {/* Complete Work dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-      <DialogContent className="w-[95vw] max-w-lg bg-background">
+      <DialogContent className="w-[95vw] sm:max-w-md bg-background">
         <DialogHeader>
             <DialogTitle>Complete Work</DialogTitle>
             <DialogDescription>
@@ -906,7 +935,7 @@ export default function FieldPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 overflow-y-auto max-h-[60vh]">
+          <div className="space-y-4 overflow-y-auto max-h-[70vh] sm:max-h-[74vh] pr-1.5">
             <div className="space-y-1.5">
               <label
                 className="text-sm font-medium leading-none"
@@ -1006,6 +1035,27 @@ export default function FieldPage() {
                 )}
                 Use My Location
               </Button>
+            </div>
+
+            <div className="flex flex-col gap-1.5 pt-0.5">
+              <label
+                className="text-sm font-medium leading-normal flex items-center justify-between select-none"
+                htmlFor="work-done-notes"
+              >
+                <span>Work Description / Fix Notes</span>
+                <span className="text-xs text-muted-foreground font-normal">(Optional)</span>
+              </label>
+              <Textarea
+                id="work-done-notes"
+                placeholder="Describe fixes performed (e.g., track tamping completed, rail clip replaced, OHE tension adjusted)..."
+                value={workDoneNotes}
+                onChange={(e) => setWorkDoneNotes(e.target.value)}
+                rows={3}
+                className="h-20 min-h-[5rem] max-h-28 text-sm resize-none rounded-xl"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Field documentation record for maintenance history.
+              </p>
             </div>
           </div>
 

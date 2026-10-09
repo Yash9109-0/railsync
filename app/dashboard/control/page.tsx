@@ -135,6 +135,7 @@ interface VerifyLogRow {
   created_at: string;
   status: string | null;
   verified: boolean | null;
+  work_done_notes?: string | null;
   block_requests: {
     work_description: string | null;
     work_type: BlockRequestWorkType;
@@ -2366,6 +2367,34 @@ return (
                           )}
                         </div>
                       </div>
+
+                      {/* Field Worker Fix Notes / Work Description */}
+                      {log.work_done_notes ? (
+                        <div className="flex items-start gap-3 p-3.5 rounded-xl border border-primary/25 bg-primary/[0.04] dark:bg-primary/[0.08]">
+                          <FileText className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                                Field Worker Fix Notes / Work Performed
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] py-0 px-2 h-4 font-semibold text-primary border-primary/30 bg-primary/10"
+                              >
+                                Reported from Field
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-foreground/90 leading-relaxed break-words font-medium">
+                              {log.work_done_notes}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-dashed border-border/70 bg-muted/20 text-xs text-muted-foreground">
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+                          <span>No specific fix notes submitted by field crew for this work</span>
+                        </div>
+                      )}
 
                       {/* 4-column summary bar */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40">

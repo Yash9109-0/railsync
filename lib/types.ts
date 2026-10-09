@@ -144,6 +144,7 @@ export interface ExecutionLog {
   geo_lng: number | null
   status: ExecutionLogStatus | null
   verified: boolean | null
+  work_done_notes?: string | null
   created_at: string
 }
 

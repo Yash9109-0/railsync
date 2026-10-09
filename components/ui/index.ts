@@ -76,3 +76,4 @@ export { Slider } from "./slider";
 export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "./tooltip";
 export { Separator } from "./separator";
 export { TabTransition } from "./tab-transition";
+export { Textarea } from "./textarea";
