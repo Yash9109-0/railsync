@@ -1,4 +1,5 @@
-# 🚂 RailSync – Intelligent Railway Maintenance Block Planning System
+<img width="1747" height="303" alt="image" src="https://github.com/user-attachments/assets/af1c7ee4-3e93-4ccf-ba50-960116fe82c2" />
+
 
 > **AI-powered unified platform for optimizing railway maintenance blocks with safety-first scheduling, live corridor tracking, and geo-tagged field verification.**
 
@@ -144,42 +145,60 @@ Maintenance Team ──► AI Engine ──► Control Center ──► Field Cr
 
 ---
 
-## 🚀 Run Locally
+🚀 Run Locally
 
-```bash
-# 1. Clone
+💡 No setup needed to try it: open the live site at railsync-red.vercel.app. The steps below are only for running your own copy.
+
+Prerequisites
+Node.js 18 or newer
+Python 3.10 or newer
+A Supabase project (PostgreSQL database)
+1. Clone the repository
+bash
 git clone https://github.com/Yash9109-0/railsync.git
 cd railsync
-
-# 2. Frontend
-cd frontend
-npm install
-npm run dev            # http://localhost:3000
-
-# 3. Backend (new terminal)
+2. Start the backend (FastAPI)
+bash
 cd backend
 python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
+
+# Activate the virtual environment
+source venv/bin/activate        # macOS / Linux
+venv\Scripts\activate           # Windows
+
 pip install -r requirements.txt
-uvicorn main:app --reload     # http://localhost:8000
-```
+uvicorn main:app --reload       # runs at http://localhost:8000
+3. Start the frontend (Next.js) in a new terminal
+bash
+cd frontend
+npm install
+npm run dev                     # runs at http://localhost:3000
+4. Environment variables
 
+Create these files before starting (never commit them to GitHub):
 
-## 👥 Team
+env
+# backend/.env
+SUPABASE_URL=your_supabase_url
+SUPABASE_KEY=your_supabase_key
 
-|       Name          |                     Role                              |
-|                     |                                                       |
-|     Yash Sahu       | Database and Integration of all team members work     |
-|     Ayushman Rai    |Backend & AI & ML setup & training                     |
-| Abhinav shrivastava |Frontend & Hosting                                     |
-|      T Murli        |Build log Deployment errors Handling                   |
+# frontend/.env.local
+NEXT_PUBLIC_API_URL=http://localhost:8000
 
----
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 
-## 📄 License
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 
-Released under the [MIT License](LICENSE).
+Then open http://localhost:3000 in your browser.
 
----
+# 👥 Team 
 
-<p align="center">Built with ❤️ for safer, smarter Indian Railways.</p>
+Name	Role
+
+Yash Sahu -	Database and integration of all team members' work
+
+Ayushman Rai -	Backend, AI & ML setup and training
+
+Abhinav Shrivastava -	Frontend and hosting
+
+T Murli -	Build logs and deployment error handling
