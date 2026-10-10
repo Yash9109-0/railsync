@@ -217,7 +217,7 @@
   }
 
   body {
-    @apply bg-surface-1 text-foreground;
+    @apply bg-surface-1 text-foreground text-base;
   }
 
   /* Typography hierarchy — headings semibold, body normal, labels medium.

@@ -300,7 +300,7 @@ export function DashboardSidebar({
     pathname === href || pathname.startsWith(href + "/");
 
   const baseLinkCls =
-    "relative isolate flex h-[46px] items-center gap-3 rounded-xl px-4 py-3 text-[15px] font-bold leading-none transition-all";
+    "relative isolate flex h-[46px] items-center gap-3 rounded-xl px-4 py-3 text-[16px] font-bold leading-none transition-all";
 
   const activePillCls =
     "absolute inset-x-0 top-1/2 -z-10 h-[38px] -translate-y-1/2 rounded-xl bg-gradient-primary";
@@ -348,7 +348,7 @@ export function DashboardSidebar({
 
       {/* Recent activity — compact live feed of the latest actions */}
       <div className="px-2 pb-2">
-        <p className="px-3 pb-1 text-[13px] font-bold text-black dark:text-slate-300">
+        <p className="px-3 pb-1 text-[14px] font-bold text-black dark:text-slate-300">
           Recent Activity
         </p>
         {loadingActivity ? (
@@ -375,12 +375,12 @@ export function DashboardSidebar({
                     )}
                   />
                   <span
-                    className="min-w-0 flex-1 whitespace-normal text-[12px] font-bold leading-4 text-black dark:text-slate-400"
+                    className="min-w-0 flex-1 whitespace-normal text-[13px] font-bold leading-4 text-black dark:text-slate-400"
                     title={item.description}
                   >
                     {item.description}
                   </span>
-                  <span className="shrink-0 whitespace-nowrap text-[12px] text-muted-foreground">
+                  <span className="shrink-0 whitespace-nowrap text-[13px] text-muted-foreground">
                     {relativeTime(item.timestamp, activityNow)}
                   </span>
                 </li>

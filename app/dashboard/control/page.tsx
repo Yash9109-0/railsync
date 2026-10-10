@@ -1894,7 +1894,7 @@ return (
                             {trainMeta && (
                               <Badge
                                 className={cn(
-                                  "text-[10px] font-bold text-white px-1.5 py-0 h-4 uppercase",
+                                  "text-[10px] font-bold text-white px-2 py-0.5 min-h-[20px] h-auto leading-none uppercase",
                                   isMaterial
                                     ? "bg-amber-600 hover:bg-amber-600"
                                     : "bg-[#7c3aed] hover:bg-[#7c3aed]"
@@ -1906,7 +1906,7 @@ return (
                             {trainMeta?.track && (
                               <Badge
                                 variant="outline"
-                                className="text-[10px] font-mono font-medium px-1.5 py-0 h-4 border-slate-300 text-slate-600"
+                                className="text-[10px] font-mono font-medium px-2 py-0.5 min-h-[20px] h-auto leading-none border-slate-300 text-slate-600"
                               >
                                 {trainMeta.track}
                               </Badge>
@@ -2379,7 +2379,7 @@ return (
                               </span>
                               <Badge
                                 variant="outline"
-                                className="text-[10px] py-0 px-2 h-4 font-semibold text-primary border-primary/30 bg-primary/10"
+                                className="text-[10px] px-2 py-0.5 min-h-[20px] h-auto leading-none font-semibold text-primary border-primary/30 bg-primary/10"
                               >
                                 Reported from Field
                               </Badge>

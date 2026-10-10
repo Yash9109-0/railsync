@@ -340,7 +340,7 @@ function CalendarDayChip({
     >
       <div className="flex items-center justify-between gap-1">
         <span className="truncate text-xs font-medium">{blockId}</span>
-        <span className={cn("shrink-0 rounded px-1 text-[10px] font-medium", getDepartmentBadgeClass(dept))}>
+        <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none", getDepartmentBadgeClass(dept))}>
           {dept}
         </span>
       </div>
@@ -863,12 +863,12 @@ export default function HorizonPlanningCalendar() {
                   (h.solver_used.toLowerCase().includes("or-tools") ||
                     h.solver_used.toLowerCase().includes("cp-sat") ||
                     h.solver_used.toLowerCase().includes("or_tools"))) ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold leading-none min-h-[24px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     Google OR-Tools (Optimized)
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium leading-none min-h-[24px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                     Heuristic (Fallback)
                   </span>
                 )}

@@ -359,12 +359,12 @@ function HorizonCard({ horizon, onApproved }: HorizonCardProps) {
                 (horizon.solver_used.toLowerCase().includes("or-tools") ||
                   horizon.solver_used.toLowerCase().includes("cp-sat") ||
                   horizon.solver_used.toLowerCase().includes("or_tools"))) ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold leading-none min-h-[24px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Google OR-Tools (Optimized)
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium leading-none min-h-[24px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                   Heuristic (Fallback)
                 </span>
               )}

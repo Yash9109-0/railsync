@@ -812,7 +812,7 @@ export default function LiveCorridorLeafletMap({
                       <span className="text-slate-500">Block / Signal:</span>
                       <span
                         className={cn(
-                          "inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold text-[11px]",
+                          "inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold text-[11px] leading-none min-h-[22px]",
                           isOccupied
                             ? "bg-red-100 text-red-700 border border-red-200"
                             : "bg-emerald-100 text-emerald-700 border border-emerald-200"

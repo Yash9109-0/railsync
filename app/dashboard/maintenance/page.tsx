@@ -1284,7 +1284,7 @@ export default function MaintenancePage() {
                           </span>
                           <span
                             className={cn(
-                              "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold min-w-fit whitespace-nowrap",
+                              "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold min-w-fit whitespace-nowrap leading-none",
                               SEVERITY_PILL[defect.severity] ??
                                 "bg-[#7009c6]/15 text-[#7009c6]",
                             )}
@@ -1292,7 +1292,7 @@ export default function MaintenancePage() {
                             {SEVERITY_LABELS[defect.severity] ?? defect.severity}
                           </span>
                           {defect.status !== "open" && (
-                            <span className="inline-flex items-center rounded-full bg-[#7009c6] px-2.5 py-0.5 text-[10px] font-bold text-white whitespace-nowrap ml-1">
+                            <span className="inline-flex items-center rounded-full bg-[#7009c6] px-2.5 py-1 text-[11px] font-bold text-white whitespace-nowrap ml-1 leading-none">
                               {statusBadge.label}
                             </span>
                           )}
@@ -1312,7 +1312,7 @@ export default function MaintenancePage() {
                             {overdue && (
                               <Badge
                                 variant="destructive"
-                                className="rounded-full text-[10px] font-bold leading-none"
+                                className="rounded-full text-[11px] font-bold leading-none px-2.5 py-0.5 min-h-[20px]"
                               >
                                 Overdue
                               </Badge>

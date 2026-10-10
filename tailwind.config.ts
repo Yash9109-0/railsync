@@ -35,9 +35,13 @@ export default {
     spacing: {
       px: "1px",
       0: "0px",
+      0.5: "0.125rem", // 2
       1: "0.25rem", // 4
+      1.5: "0.375rem", // 6
       2: "0.5rem", // 8
+      2.5: "0.625rem", // 10
       3: "0.75rem", // 12
+      3.5: "0.875rem", // 14
       4: "1rem", // 16
       5: "1.25rem", // 20
       6: "1.5rem", // 24
@@ -64,16 +68,16 @@ export default {
       96: "24rem", // 384
     },
 
-    /* ── 1. Typography scale · ratio 1.25 (12 / 14 / 16 / 20 / 25 / 31 / 39)
+    /* ── 1. Typography scale · ratio 1.25 (13 / 15 / 17 / 21 / 26 / 33 / 41)
          Line-heights are multiples of 4px to sit on the same grid. ── */
     fontSize: {
-      xs: ["0.75rem", { lineHeight: "1rem" }], // 12 / 16
-      sm: ["0.875rem", { lineHeight: "1.25rem" }], // 14 / 20
-      base: ["1rem", { lineHeight: "1.5rem" }], // 16 / 24
-      lg: ["1.25rem", { lineHeight: "1.75rem" }], // 20 / 28
-      xl: ["1.5625rem", { lineHeight: "2rem" }], // 25 / 32
-      "2xl": ["1.9375rem", { lineHeight: "2.5rem" }], // 31 / 40
-      "3xl": ["2.4375rem", { lineHeight: "3rem" }], // 39 / 48
+      xs: ["0.8125rem", { lineHeight: "1.125rem" }], // 13px / 18px (was 12px / 16px)
+      sm: ["0.9375rem", { lineHeight: "1.375rem" }], // 15px / 22px (was 14px / 20px)
+      base: ["1.0625rem", { lineHeight: "1.625rem" }], // 17px / 26px (was 16px / 24px)
+      lg: ["1.3125rem", { lineHeight: "1.875rem" }], // 21px / 30px (was 20px / 28px)
+      xl: ["1.625rem", { lineHeight: "2.125rem" }], // 26px / 34px (was 25px / 32px)
+      "2xl": ["2.0625rem", { lineHeight: "2.625rem" }], // 33px / 42px (was 31px / 40px)
+      "3xl": ["2.5625rem", { lineHeight: "3.125rem" }], // 41px / 50px (was 39px / 48px)
     },
 
     /* ── 1b. Font weights — headings semibold/bold, labels medium, body normal.

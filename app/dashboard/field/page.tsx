@@ -569,20 +569,20 @@ export default function FieldPage() {
     }
     if (variance < 0) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2.5 py-0.5 text-xs font-medium text-success">
+        <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-3 py-1 text-xs font-medium text-success leading-none min-h-[22px]">
           Saved {Math.abs(variance)} min
         </span>
       )
     }
     if (variance > 0) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-destructive-bg px-2.5 py-0.5 text-xs font-medium text-destructive">
+        <span className="inline-flex items-center gap-1 rounded-full bg-destructive-bg px-3 py-1 text-xs font-medium text-destructive leading-none min-h-[22px]">
           Over by {variance} min
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2.5 py-0.5 text-xs font-medium text-success">
+      <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-3 py-1 text-xs font-medium text-success leading-none min-h-[22px]">
         On time
       </span>
     )
