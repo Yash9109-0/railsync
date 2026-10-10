@@ -1760,11 +1760,11 @@ if (pendingError) {
 return (
     <div className="w-full space-y-8 lg:space-y-10">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold">Control Center</h1>
-          <p className="text-sm text-muted-foreground">
-            Live timetable & block request approvals for the rail network.
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-950/60 p-2 text-[#7009c6] shadow-sm border border-purple-200/50 dark:border-purple-800/50">
+            <Gauge className="h-6 w-6" />
+          </div>
+          <h1 className="text-2xl font-bold text-[#7009c6]">Control Center</h1>
         </div>
         <Button
           variant="outline"
@@ -1787,7 +1787,7 @@ return (
       </div>
 
       <Tabs defaultValue="timetable" className="space-y-6">
-        <TabsList className="flex flex-wrap gap-1">
+        <TabsList>
           <TabsTrigger value="timetable">Timetable</TabsTrigger>
           <TabsTrigger value="pending">Pending Plans</TabsTrigger>
           <TabsTrigger value="verify">Verify Field Work</TabsTrigger>

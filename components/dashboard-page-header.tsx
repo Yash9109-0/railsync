@@ -1,9 +1,7 @@
 "use client"
 
 import type { LucideIcon } from "lucide-react"
-import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
-import { getTimeAwareGreeting } from "@/lib/utils"
 
 interface DashboardPageHeaderProps {
   icon?: LucideIcon
@@ -18,14 +16,7 @@ export function DashboardPageHeader({
   title,
   description,
   action,
-  userName,
 }: DashboardPageHeaderProps) {
-  const [greeting, setGreeting] = useState("")
-
-  useEffect(() => {
-    setGreeting(getTimeAwareGreeting())
-  }, [])
-
   return (
     <header
       className={cn(
@@ -41,11 +32,6 @@ export function DashboardPageHeader({
         )}
         <div className="flex flex-col">
           <h1 className="text-2xl font-semibold tracking-tight text-purple-700 dark:text-purple-300 flex items-center gap-2 font-heading">
-            {userName && (
-              <span className="text-lg font-medium text-muted-foreground dark:text-slate-100">
-                {greeting}, {userName}
-              </span>
-            )}
             {title}
           </h1>
           {description && (

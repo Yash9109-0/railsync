@@ -609,8 +609,6 @@ export default function FieldPage() {
       <DashboardPageHeader
         icon={MapPin}
         title="Field Execution Dashboard"
-        description="Start approved work, complete it with site photos and a location, and review execution performance."
-        userName={user?.email?.split("@")[0] || "User"}
         action={
           <Button
             variant="outline"

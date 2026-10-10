@@ -866,12 +866,10 @@ export default function MaintenancePage() {
       <DashboardPageHeader
         icon={Wrench}
         title="Maintenance"
-        description="Log defects and request track blocks for maintenance work. All requests are routed to AI scoring and approval."
-        userName={user?.email?.split("@")[0] || "User"}
       />
 
       <Tabs defaultValue="log" className="w-full space-y-2 bg-transparent">
-        <TabsList className="bg-[#f5f0ff] dark:bg-slate-900 border border-transparent dark:border-slate-800">
+        <TabsList className="mb-2">
           <TabsTrigger value="log" data-tour="combined-form-tab">
             <Plus className="h-4 w-4 mr-2" />
             Log Defect / Request
@@ -895,11 +893,6 @@ export default function MaintenancePage() {
               <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-slate-100">
                 Log Defect &amp; Request Block
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Record a defect and optionally request a track block in a single
-                action. The defect is always saved; the block request is created
-                only if the checkbox below is checked.
-              </p>
             </div>
 
             <form onSubmit={handleSubmit} className="w-full space-y-3">
@@ -1211,14 +1204,16 @@ export default function MaintenancePage() {
                 </label>
               </div>
 
-              {/* Submit button: bg-[#7009c6] w-full rounded-full */}
-              <Button
-                type="submit"
-                disabled={!isFormValid() || isSubmitting}
-                className="w-full bg-[#7009c6] hover:bg-[#7009c6]/90 text-white rounded-full h-10 font-medium text-sm shadow-sm transition-all"
-              >
-                {isSubmitting ? "Submitting..." : "Submit"}
-              </Button>
+              {/* Submit button: center-aligned, rounded square */}
+              <div className="flex justify-center pt-2">
+                <Button
+                  type="submit"
+                  disabled={!isFormValid() || isSubmitting}
+                  className="min-w-[160px] px-8 bg-[#7009c6] hover:bg-[#7009c6]/90 text-white rounded-xl h-10 font-semibold text-sm shadow-md hover:shadow-lg transition-all"
+                >
+                  {isSubmitting ? "Submitting..." : "Submit"}
+                </Button>
+              </div>
             </form>
           </div>
         </TabsContent>

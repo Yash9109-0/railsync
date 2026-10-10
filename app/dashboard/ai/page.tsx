@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { TabTransition } from "@/components/ui/tab-transition"
+import { DashboardPageHeader } from "@/components/dashboard-page-header"
+import { ShieldAlert } from "lucide-react"
 import HorizonPlanningCalendar from "@/components/HorizonPlanningCalendar"
 import ScoredRequestsBoard from "@/components/ScoredRequestsBoard"
 
@@ -10,7 +12,12 @@ export default function AiPage() {
   const [activeTab, setActiveTab] = useState("per-request")
 
   return (
-    <div className="w-full">
+    <div className="w-full space-y-6">
+      <DashboardPageHeader
+        icon={ShieldAlert}
+        title="AI Priority & Scoring"
+      />
+
       <Tabs
         defaultValue="per-request"
         value={activeTab}

@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { createClient } from "@/lib/supabase/client"
 import { Badge } from "@/components/ui/badge"
@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { DashboardPageHeader } from "@/components/dashboard-page-header"
 import { toast } from "sonner"
 import { useEffect, useState, useCallback } from "react"
 import {
@@ -982,65 +981,60 @@ export default function ScoredRequestsBoard() {
 
   return (
     <div className="space-y-6">
-      <DashboardPageHeader
-        icon={ShieldAlert}
-        title="AI Priority & Scoring"
-        description="Scored and safety-blocked requests. Stuck submissions are auto-processed on load."
-        action={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => sweepStuckRequests(true)}
-              disabled={sweeping || loading}
-            >
-              {sweeping ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                  Checking...
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
-                  Check for Stuck Requests
-                </>
-              )}
-            </Button>
-            <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-              Refresh
-            </Button>
-          </div>
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+            <SelectTrigger className="w-[180px]" size="sm">
+              <SelectValue placeholder="Filter by department" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Departments</SelectItem>
+              {DEPARTMENTS.map((d) => (
+                <SelectItem key={d} value={d}>
+                  {d}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-          <SelectTrigger className="w-[180px]" size="sm">
-            <SelectValue placeholder="Filter by department" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Departments</SelectItem>
-            {DEPARTMENTS.map((d) => (
-              <SelectItem key={d} value={d}>
-                {d}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <Select
+            value={sortBy}
+            onValueChange={(v) => setSortBy(v as "priority_score" | "created_at")}
+          >
+            <SelectTrigger className="w-[200px]" size="sm">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="priority_score">Sort by Priority Score</SelectItem>
+              <SelectItem value="created_at">Sort by Date (newest first)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <Select
-          value={sortBy}
-          onValueChange={(v) => setSortBy(v as "priority_score" | "created_at")}
-        >
-          <SelectTrigger className="w-[200px]" size="sm">
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="priority_score">Sort by Priority Score</SelectItem>
-            <SelectItem value="created_at">Sort by Date (newest first)</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => sweepStuckRequests(true)}
+            disabled={sweeping || loading}
+          >
+            {sweeping ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                Checking...
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+                Check for Stuck Requests
+              </>
+            )}
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {loading ? (
