@@ -13,7 +13,7 @@
 | :--- | :--- | :--- |
 | 🌐 **Live Website** | [railsync-red.vercel.app](https://railsync-red.vercel.app) | 🟢 Live |
 | ⚙️ **ML Backend API** | [railsync-ml.onrender.com](https://railsync-ml.onrender.com) | 🟢 Live |
-| 📂 **GitHub Repo** | [github.com/YOUR_USERNAME/railsync](https://github.com/Yash9109-0/railsync) | Public |
+| 📂 **GitHub Repo** | [github.com/Yash9109-0/railsync](https://github.com/Yash9109-0/railsync) | Public |
 
 > ⏳ **Note:** The backend runs on Render's free tier, so the first request may take ~30 seconds to wake up (cold start).We have created cron-job which send request in every 10 seconds so our backend never goes in rest mode.
 
